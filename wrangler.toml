@@ -6,7 +6,7 @@ compatibility_flags = ["nodejs_compat"]
 [[d1_databases]]
 binding = "DB"
 database_name = "strike-zone"
-database_id = "REPLACE_WITH_YOUR_D1_ID"
+database_id = "46bac47e-e6f3-44a2-91b6-cea233f46c8e"
 
 [[r2_buckets]]
 binding = "BUCKET"
