@@ -1,14 +1,5 @@
-{
-  "name": "strike-zone",
-  "private": true,
-  "type": "module",
-  "scripts": {
-    "dev": "wrangler pages dev public --d1 DB --r2 BUCKET --compatibility-flag nodejs_compat --binding ADMIN_PASSWORD=test",
-    "deploy": "wrangler pages deploy public --project-name strike-zone",
-    "db:init": "wrangler d1 execute strike-zone --remote --file=schema.sql",
-    "migrate:pull": "node migrate/from-supabase.mjs"
-  },
-  "devDependencies": {
-    "wrangler": "^4"
-  }
-}
+   {
+     "name": "strike-zone",
+     "private": true,
+     "type": "module"
+   }
