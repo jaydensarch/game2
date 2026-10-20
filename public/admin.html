@@ -69,7 +69,7 @@ input[type=password]:focus{outline:2px solid #e0b45c55;border-color:var(--gold)}
 <header><div class="logo"><b>STRIKE ZONE</b><span>Admin</span></div>
 <div class="pills"><div class="pill" id="p1"><i></i><span>Checking…</span></div><div class="pill" id="p2"><i></i><span>Storage…</span></div></div></header>
 
-<div id="login" class="card"><h2>Admin sign-in</h2><p>Enter the password set on Cloudflare to manage game files.</p>
+<div id="login" class="card"><h2>Admin sign-in</h2><p>Enter the password set in Vercel to manage game files.</p>
 <div class="row"><input id="pw" type="password" placeholder="Admin password" autocomplete="current-password"><button class="pri" id="go">Unlock</button></div></div>
 
 <div id="app" class="hide">
@@ -109,10 +109,10 @@ const esc=s=>String(s).replace(/[&<>"]/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;',
 let tt;function toast(m,k){const t=$('toast');t.textContent=m;t.className='show '+(k||'');clearTimeout(tt);tt=setTimeout(()=>t.className='',k=='err'?6000:2800)}
 function pill(id,ok,txt){const e=$(id);e.className='pill '+(ok?'ok':'bad');e.lastChild.textContent=txt}
 
-fetch('/api/login').then(r=>r.json()).then(d=>{pill('p1',d.passwordSet,d.passwordSet?'Password set':'Password NOT set on Cloudflare');
- pill('p2',d.storage=='ok',d.storage=='ok'?'Storage connected':d.storage=='missing'?'D1 / R2 not bound':'Storage error');
- if(d.storage=='missing')toast('Bind the D1 database (DB) and R2 bucket (BUCKET) to this Pages project, then redeploy.','err');
- else if(d.storage!='ok')toast('Storage error: '+d.error,'err')}).catch(()=>{pill('p1',false,'API unreachable');pill('p2',false,'Is this deployed on Cloudflare Pages?')});
+fetch('/api/login').then(r=>r.json()).then(d=>{pill('p1',d.passwordSet,d.passwordSet?'Password set':'Password NOT set on Vercel');
+ pill('p2',d.storage=='ok',d.storage=='ok'?'Storage connected':d.storage=='missing'?'Cloudflare not set up':'Storage error');
+ if(d.storage=='missing')toast('Add these environment variables on Vercel, then redeploy: '+d.error+'.','err');
+ else if(d.storage!='ok')toast('Storage error: '+d.error,'err')}).catch(()=>{pill('p1',false,'API unreachable');pill('p2',false,'Is this deployed on Vercel?')});
 
 async function login(){pw=$('pw').value.trim();if(!pw)return;$('go').disabled=true;
  const r=await post('/api/login',{}),d=await r.json().catch(()=>({}));$('go').disabled=false;
@@ -213,10 +213,10 @@ const drop=$('drop');drop.onclick=()=>$('fi').click();$('fi').onchange=()=>{star
 ['dragleave','drop'].forEach(v=>drop.addEventListener(v,e=>{e.preventDefault();drop.classList.remove('over')}));
 drop.addEventListener('drop',e=>start([...e.dataTransfer.files]));
 
-function putSigned(url,f,bar){return new Promise(res=>{const x=new XMLHttpRequest();x.open('PUT',url);x.setRequestHeader('x-upsert','true');
+function putSigned(url,f,bar){return new Promise(res=>{const x=new XMLHttpRequest();x.open('PUT',url);
  x.upload.onprogress=e=>{if(e.lengthComputable)bar.style.width=(e.loaded/e.total*100)+'%'};
- x.onload=()=>res(x.status<300?'':'failed ('+x.status+') '+x.responseText);x.onerror=()=>res('network error – the file may be larger than Cloudflare allows (100 MB per upload on the Pages free and Pro plans)');
- const fd=new FormData();fd.append('cacheControl','3600');fd.append('',f);x.send(fd)})}
+ x.onload=()=>res(x.status<300?'':'failed ('+x.status+') '+x.responseText);x.onerror=()=>res('network error – the file may be blocked – check the R2 bucket's CORS policy (see README step 5)');
+ x.send(f)})}
 
 /* ---- read a model in the browser and decide what kind of attachment it is ---- */
 const OPTK=/scope|sight|optic|holo|acog|red[-_ ]?dot|reddot|reflex|eotech|thermal|lens/;
