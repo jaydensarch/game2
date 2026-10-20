@@ -215,7 +215,7 @@ drop.addEventListener('drop',e=>start([...e.dataTransfer.files]));
 
 function putSigned(url,f,bar){return new Promise(res=>{const x=new XMLHttpRequest();x.open('PUT',url);
  x.upload.onprogress=e=>{if(e.lengthComputable)bar.style.width=(e.loaded/e.total*100)+'%'};
- x.onload=()=>res(x.status<300?'':'failed ('+x.status+') '+x.responseText);x.onerror=()=>res('network error – the file may be blocked – check the R2 bucket's CORS policy (see README step 5)');
+ x.onload=()=>res(x.status<300?'':'failed ('+x.status+') '+x.responseText);x.onerror=()=>res('network error – the file may be blocked – check the CORS policy on the R2 bucket (see README step 5)');
  x.send(f)})}
 
 /* ---- read a model in the browser and decide what kind of attachment it is ---- */
