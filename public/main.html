@@ -1623,16 +1623,16 @@ TC.sync=function(on){if(on!==!!vis){vis=on?1:0;el.style.display=on?'block':'none
 TC.enter=function(){try{const d=document.documentElement;if(!document.fullscreenElement&&d.requestFullscreen)d.requestFullscreen().catch(()=>{})}catch(_){}try{screen.orientation.lock('landscape').catch(()=>{})}catch(_){}};
 })();
 
-/* ====================== ONLINE MULTIPLAYER (Supabase Realtime broadcast) ====================== */
+/* ====================== ONLINE MULTIPLAYER (Cloudflare Durable Objects relay, see /worker) ====================== */
 const esc=s=>String(s).replace(/[&<>"]/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;'}[c]));
 Object.assign(MPO,{sb:null,lob:null,ch:null,room:null,rooms:[],me:null,msg:'',RP:{},roster:{},sc:[0,0],feed:[],ts:0,rt:3,inv:0,lk:null,spawn:[[0,0],[0,0]],team:0,advk:'',fk:0,
 id:Math.random().toString(36).slice(2,10),
 nm(){if(ACC.p)return ACC.p.name;let n=(localStorage.getItem('sz_name')||'').trim().slice(0,14);if(!n){n='Player'+(100+Math.random()*900|0);try{localStorage.setItem('sz_name',n)}catch(e){}}return n}});
 const subs=ch=>new Promise((ok,bad)=>{let d=0;ch.subscribe(s=>{if(d)return;if(s=='SUBSCRIBED'){d=1;ok()}else if(s=='CHANNEL_ERROR'||s=='TIMED_OUT'||s=='CLOSED'){d=1;bad(new Error('Could not reach the game server'))}})});
 async function mpInit(){if(MPO.sb)return;let c;try{c=await (await fetch('/api/mpconfig',{cache:'no-store'})).json()}catch(e){throw new Error('Could not reach the server')}
-if(!c.url||!c.key)throw new Error(c.error||'Online play is not set up yet');
-if(!window.supabase)await new Promise((ok,bad)=>{const s=document.createElement('script');s.src='https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2.45.4/dist/umd/supabase.js';s.onload=ok;s.onerror=()=>bad(new Error('Could not load the network library'));document.head.appendChild(s)});
-MPO.sb=window.supabase.createClient(c.url,c.key,{realtime:{params:{eventsPerSecond:30}}})}
+if(!c.rt)throw new Error(c.error||'Online play is not set up yet');
+if(!window.SZRT)await new Promise((ok,bad)=>{const s=document.createElement('script');s.src='/rt.js';s.onload=ok;s.onerror=()=>bad(new Error('Could not load the network library'));document.head.appendChild(s)});
+MPO.sb=window.SZRT(c.rt)}
 async function joinLobby(){if(MPO.lob)return;const ch=MPO.sb.channel('sz-lobby',{config:{presence:{key:MPO.id}}});MPO.lob=ch;
 ch.on('presence',{event:'sync'},()=>{const st=ch.presenceState(),r=[];for(const k in st)for(const m of st[k])if(m.room)r.push(m);MPO.rooms=r;if(!MPO.room)lobRender()});
 try{await subs(ch)}catch(e){MPO.lob=null;throw e}}
