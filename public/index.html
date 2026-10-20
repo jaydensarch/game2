@@ -911,16 +911,39 @@ const n1=weldNormals(np,idxArr),m3=new T.Matrix3().getNormalMatrix(bi);
 for(let i=0;i<n;i++){nv.set(n1[i*3],n1[i*3+1],n1[i*3+2]).applyMatrix3(m3).normalize();nn[i*3]=nv.x;nn[i*3+1]=nv.y;nn[i*3+2]=nv.z}
 for(let i=0;i<n;i++){acc.set(np[i*3],np[i*3+1],np[i*3+2]).applyMatrix4(bi);np[i*3]=acc.x;np[i*3+1]=acc.y;np[i*3+2]=acc.z}
 smooth=true;info='retargeted, scale '+s.toFixed(3)+' (from '+sMethod+'), '+Object.keys(gi).length+' bones matched, '+pushed+' of '+n+' vertices pushed out of the skin'}
+/* FIT GUARD: a top must never cover the head, and pants must never climb above the waist. Triangles that end up in the wrong part of the body (bound to the head, or
+   sitting above the neck / waist line) are cut away instead of being drawn over the face. If that is a big part of the garment, the garment simply does not fit this
+   body: it is refused (null) rather than left on the character looking broken. */
+let keepIdx=null,keepGroups=null;{const slot=accSlot(key,{});if((slot=='torso'||slot=='legs')&&gm.geometry.index){
+const mpos=k=>mb.has(k)?new T.Vector3().setFromMatrixPosition(mI[mb.get(k)].clone().invert()):null,hd=mpos('head'),nkp=mpos('neck'),hp=mpos('hips');
+let topY=null;if(slot=='torso'&&hd&&nkp)topY=nkp.y+(hd.y-nkp.y)*.5;else if(slot=='legs'&&hd&&hp)topY=hp.y+(hd.y-hp.y)*.12;
+const badKey=slot=='torso'?/^head/:/^(spine\d*|neck|head|(left|right)(shoulder|arm|forearm|hand.*))$/,bad=new Uint8Array(n),yy=new T.Vector3();
+for(let i=0;i<n;i++){let b=0,bw=-1;for(let j=0;j<4;j++)if(wf[i*4+j]>bw){bw=wf[i*4+j];b=ni[i*4+j]}
+if(badKey.test(nk2(bm.skeleton.bones[b].name))){bad[i]=1;continue}
+if(mode=='retarget'&&topY!==null){yy.set(np[i*3],np[i*3+1],np[i*3+2]).applyMatrix4(bm.bindMatrix);if(yy.y>topY)bad[i]=1}}
+const ix0=gm.geometry.index,grs=(gm.geometry.groups&&gm.geometry.groups.length)?gm.geometry.groups:[{start:0,count:ix0.count,materialIndex:0,_whole:1}],out=[],og=[];let tot=0,drop=0;
+for(const g of grs){const st=out.length;for(let k=g.start;k+2<g.start+g.count;k+=3){const a=ix0.getX(k),b=ix0.getX(k+1),c=ix0.getX(k+2);tot++;if(bad[a]+bad[b]+bad[c]>=2){drop++;continue}out.push(a,b,c)}og.push({start:st,count:out.length-st,materialIndex:g.materialIndex,_whole:g._whole})}
+if(drop){if(tot&&(drop/tot>.35||out.length<tot*3*.1)){CHZ.log.push('clothing '+key+' ('+slot+') refused ('+mode+'): '+Math.round(drop/tot*100)+'% of it lands on the wrong part of the body (head / above the '+(slot=='torso'?'neck':'waist')+')');return null}
+keepIdx=out;keepGroups=og.filter(g=>!g._whole);info+=' | cut '+drop+' of '+tot+' triangles that covered the '+(slot=='torso'?'head':'upper body')}}}
 /* a plain geometry (the original may use interleaved attributes) */
 const g2=new T.BufferGeometry();g2.setAttribute('position',new T.BufferAttribute(np,3));g2.setAttribute('skinIndex',new T.BufferAttribute(ni,4));g2.setAttribute('skinWeight',new T.BufferAttribute(wf,4));
 if(na||smooth)g2.setAttribute('normal',new T.BufferAttribute(nn,3));
 ['uv','uv2'].forEach(nm=>{const u=ga[nm];if(u&&u.count===n){const f=new Float32Array(n*2);for(let i=0;i<n;i++){f[i*2]=u.getX(i);f[i*2+1]=u.getY(i)}g2.setAttribute(nm,new T.BufferAttribute(f,2))}});
-const ix=gm.geometry.index;if(ix){const arr=n>65535?new Uint32Array(ix.count):new Uint16Array(ix.count);for(let i=0;i<ix.count;i++)arr[i]=ix.getX(i);g2.setIndex(new T.BufferAttribute(arr,1))}
-(gm.geometry.groups||[]).forEach(g=>g2.addGroup(g.start,g.count,g.materialIndex));if(!na&&!smooth)g2.computeVertexNormals();g2.computeBoundingSphere();g2.computeBoundingBox();
+const ix=gm.geometry.index;if(keepIdx){g2.setIndex(new T.BufferAttribute(n>65535?Uint32Array.from(keepIdx):Uint16Array.from(keepIdx),1));keepGroups.forEach(g=>g2.addGroup(g.start,g.count,g.materialIndex))}
+else{if(ix){const arr=n>65535?new Uint32Array(ix.count):new Uint16Array(ix.count);for(let i=0;i<ix.count;i++)arr[i]=ix.getX(i);g2.setIndex(new T.BufferAttribute(arr,1))}
+(gm.geometry.groups||[]).forEach(g=>g2.addGroup(g.start,g.count,g.materialIndex))}if(!na&&!smooth)g2.computeVertexNormals();g2.computeBoundingSphere();g2.computeBoundingBox();
 CHZ.log.push('clothing: '+info);return{geo:g2,bones:bm.skeleton.bones.slice(),inv:mI.map(m=>m.clone()),bind:bm.bindMatrix.clone()}}catch(e){CHZ.log.push('clothing error: '+e.message);console.warn('[char] retarget garment',e);return null}}
 
 /* cloth materials: always opaque (an exported BLEND material with a patchy alpha map made whole parts of the pants see-through / ragged), double sided, pushed slightly towards the camera so they win over the skin */
-function clothMat(m0){const m=m0.clone();m.transparent=false;m.opacity=1;m.alphaTest=0;m.depthWrite=true;m.alphaMap=null;m.polygonOffset=true;m.polygonOffsetFactor=-2;m.polygonOffsetUnits=-2;m.side=T.DoubleSide;m.skinning=true;m.needsUpdate=true;return m}
+/* Same lighting treatment the default body gets (see the body material fix): this renderer outputs LINEAR colour, so an sRGB texture comes out almost black unless it is
+   decoded as linear and lightly self-lit, and exported garments (Sketchfab / MetaHuman / Unreal) very often ship metalness 1 which renders pure black with no environment map.
+   Without this every garment that was authored dark or metallic showed up as a black silhouette. Applied to ALL cloth, never per-garment. */
+function clothLight(m){if(m.metalness!==undefined){m.metalness=Math.min(m.metalness,.1);m.metalnessMap=null;m.roughness=Math.max(m.roughness===undefined?1:m.roughness,.7);m.roughnessMap=null}
+if(m.envMap)m.envMap=null;
+if(m.map){m.map.encoding=T.LinearEncoding;m.map.needsUpdate=true;if(m.emissive){m.emissive.set(0xffffff);m.emissiveMap=m.map;m.emissiveIntensity=.55}}
+else if(m.emissive&&m.color){m.emissive.copy(m.color);m.emissiveMap=null;m.emissiveIntensity=.55}
+if(m.color&&m.map)m.color.set(0xffffff)}
+function clothMat(m0){const m=m0.clone();m.transparent=false;m.opacity=1;m.alphaTest=0;m.depthWrite=true;m.alphaMap=null;m.polygonOffset=true;m.polygonOffsetFactor=-2;m.polygonOffsetUnits=-2;m.side=T.DoubleSide;m.skinning=true;clothLight(m);m.needsUpdate=true;return m}
 /* which layer a garment is worn on: jackets / vests / armour sit over shirts */
 function garmentLayer(key,slot){return /vest|armou?r|jacket|coat|hoodie|plate|poncho|cape|cloak|parka/i.test(String(key||''))?2:(slot=='torso'?1:0)}
 /* ---- STATIC (un-rigged) CLOTHING: AUTOMATIC SKIN TRANSFER ----
@@ -1027,7 +1050,7 @@ const F=fitMeasure(b,mw),slot=accSlot(key,cfg),hb=F.hb,tb=F.tb,hs=hb.getSize(new
 let hasSk=false;root.traverse(x=>{if(x.isSkinnedMesh)hasSk=true});const inner=(hasSk?bakeSkinned(root):root).clone(true);
 /* a rigid prop sits close against the body (sized by proportion, not exact fit), so without this its surface and the body's surface
    z-fight and flicker red/black - same fix already used for wrapped/skinned clothing. */
-inner.traverse(x=>{if(!x.isMesh)return;x.frustumCulled=false;[].concat(x.material).forEach(m=>{if(!m)return;m.transparent=false;m.alphaTest=0;m.depthWrite=true;m.polygonOffset=true;m.polygonOffsetFactor=-2;m.polygonOffsetUnits=-2;m.side=T.DoubleSide;m.needsUpdate=true})});
+inner.traverse(x=>{if(!x.isMesh)return;x.frustumCulled=false;[].concat(x.material).forEach(m=>{if(!m)return;m.transparent=false;m.alphaTest=0;m.depthWrite=true;m.polygonOffset=true;m.polygonOffsetFactor=-2;m.polygonOffsetUnits=-2;m.side=T.DoubleSide;clothLight(m);m.needsUpdate=true})});
 const wrap=new T.Group();wrap.add(inner);if(cfg.flip)wrap.rotation.y=Math.PI;wrap.updateMatrixWorld(true);
 const bx=new T.Box3().setFromObject(wrap),sz=bx.getSize(new T.Vector3()),ct=bx.getCenter(new T.Vector3());if(!(sz.x>1e-6&&sz.y>1e-6&&sz.z>1e-6))return;
 const S=Math.max(.2,Math.min(3,+cfg.scale||1)),lift=+cfg.lift||0,fwd=+cfg.fwd||0,mn=(...a)=>Math.min(...a.filter(x=>isFinite(x)&&x>0));
