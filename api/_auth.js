@@ -3,7 +3,7 @@
 import {createHash,createHmac} from 'node:crypto';
 
 export const ok=p=>{const w=(process.env.ADMIN_PASSWORD||'').trim();return !!w&&String(p||'').trim()===w};
-export const FOLD={guns:['.glb','.obj'],optics:['.glb','.obj'],attachments:['.glb','.obj'],maps:['.glb','.obj','.json'],characters:['.glb','.obj'],skins:['.png','.jpg','.jpeg','.webp'],outfits:['.png','.jpg','.jpeg','.webp'],accessories:['.glb'],bodies:['.glb']};
+export const FOLD={guns:['.glb','.obj'],optics:['.glb','.obj'],attachments:['.glb','.obj'],maps:['.glb','.obj','.json'],characters:['.glb','.obj'],skins:['.png','.jpg','.jpeg','.webp'],outfits:['.png','.jpg','.jpeg','.webp'],accessories:['.glb'],bodies:['.glb'],menu:['.png','.jpg','.jpeg','.webp','.gif']};
 
 /* ---------------- settings ---------------- */
 const E=process.env;
