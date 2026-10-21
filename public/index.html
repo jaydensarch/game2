@@ -437,7 +437,7 @@ button.pm-tab.on{background:#f2f2f2;color:#0b0d10;border-color:#fff}
 </style></head><body>
 <div class="acv" id="acv"></div><div id="acc"><button id="acsq" type="button" aria-label="Your profile"></button><div id="accp"></div></div><div id="xpp"></div>
 <div id="boot"><div class="bem" id="bem"></div><div class="bring"><i></i><i></i><i></i><b></b></div>
-<div class="bt"><div class="btag">Operation Split Fire</div><h1>Strike<br>Zone</h1><p id="btip"></p></div>
+<div class="bt"><h1>Strike<br>Zone</h1><p id="btip"></p></div>
 <div class="bfoot"><div class="brow"><p id="bmsg">Connecting…</p><b id="bpct">0%</b></div><div class="bb"><i id="bbar"></i></div><div id="berr"></div></div></div>
 <script>(function(){try{var m=document.getElementById('bem'),h='';for(var i=0;i<26;i++)h+='<i style="left:'+((i*37+11)%100)+'%;--dx:'+(((i*53)%80)-40)+'px;animation-duration:'+(6+(i*13)%9)+'s;animation-delay:-'+((i*29)%12)+'s"></i>';m.innerHTML=h;
 var T=['Hold E to plant the defuser','Earn credits with kills, assists and wins','Spend credits in the Store on outfits and camos','Fit attachments to every gun in Loadout','Customise your operator in Character'],n=0,t=document.getElementById('btip');
@@ -1295,7 +1295,7 @@ const tabs=h('div','pm-tabs');['Vs bots','Online'].forEach((n,i)=>{const b=h('bu
 if(MNU.pt){const host=h('div','onl');host.id='mp';wrap.append(top,host)}else wrap.append(top,row);root.append(wrap);if(MNU.pt)onlinePaint()}
 /* right-hand side of the main menu: photos uploaded in the admin page (Menu photos). One = still, several = slideshow */
 function menuPhotos(box){clearInterval(MPH.t);MPH.t=0;if(!box)return;
-if(!MPH.list.length){box.classList.add('empty');box.innerHTML='<div class="sf-hero"><small>Season 11 · Year 3</small><b>Operation<br>Split Fire</b></div>';return}
+if(!MPH.list.length){box.classList.add('empty');box.innerHTML='';return}
 box.innerHTML=MPH.list.map(()=>'<div class="ph"></div>').join('')+(MPH.list.length>1?'<div class="ph-dots">'+MPH.list.map(()=>'<button type="button" aria-label="Show photo"></button>').join('')+'</div>':'');
 const ps=[...box.querySelectorAll('.ph')],ds=[...box.querySelectorAll('.ph-dots button')];ps.forEach((p,i)=>p.style.backgroundImage='url("'+MPH.list[i].replace(/"/g,'%22')+'")');
 const set=i=>{MPH.i=(i+ps.length)%ps.length;ps.forEach((p,j)=>p.classList.toggle('on',j==MPH.i));ds.forEach((d,j)=>d.classList.toggle('on',j==MPH.i))};set(Math.min(MPH.i,ps.length-1));
