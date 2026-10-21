@@ -56,6 +56,7 @@ export async function POST(request){
       if(!a)return bad('Wrong username or password',401);
       const h=scryptSync(String(b.password||''),a.salt,64),g=Buffer.from(a.hash,'hex');
       if(h.length!==g.length||!timingSafeEqual(h,g))return bad('Wrong username or password',401);
+      if(a.banned)return bad('This account is banned'+(a.banned.reason?': '+a.banned.reason:''),403);
       if(await assignId(a))await accPut(key(a.name),a);
       return Response.json({token:mkTok(key(a.name)),profile:pub(a)});
     }
@@ -63,6 +64,7 @@ export async function POST(request){
     if(!u)return bad('Session expired, please log in again',401);
     const a=await accGet(u);
     if(!a)return bad('Account not found',401);
+    if(a.banned)return bad('This account is banned'+(a.banned.reason?': '+a.banned.reason:''),403);
     if(await assignId(a))await accPut(u,a);
     if(b.a==='me')return Response.json({profile:pub(a)});
     if(b.a==='lookup'){
