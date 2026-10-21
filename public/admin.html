@@ -65,9 +65,32 @@ input[type=password]:focus{outline:2px solid #e0b45c55;border-color:var(--gold)}
 #toast.show{opacity:1;transform:translateX(-50%) translateY(0)}#toast.ok{border-left-color:var(--ok)}#toast.err{border-left-color:var(--bad)}
 .hide{display:none!important}
 @media(max-width:560px){.logo b{font-size:20px}.tab{padding:9px 12px}}
+
+.wrap{max-width:1100px}
+.inp{font:inherit;padding:9px 12px;border-radius:9px;border:1px solid var(--line);background:#0f1317;color:var(--text);min-width:0}
+.inp:focus{outline:2px solid #e0b45c55;border-color:var(--gold)}
+select.inp{cursor:pointer}
+.pbar{display:flex;gap:8px;flex-wrap:wrap;margin-bottom:12px}.pbar .inp:first-child{flex:1;min-width:210px}
+.stats{display:grid;grid-template-columns:repeat(auto-fill,minmax(150px,1fr));gap:10px;margin-bottom:14px}
+.stat{background:var(--panel);border:1px solid var(--line);border-radius:12px;padding:12px 14px}.stat b{display:block;font-size:24px;color:var(--gold)}.stat span{color:var(--mut);font-size:12px;text-transform:uppercase;letter-spacing:1px}
+.two{display:grid;grid-template-columns:repeat(auto-fit,minmax(300px,1fr));gap:12px}
+.ch{margin:0 0 10px;font-size:13px;text-transform:uppercase;letter-spacing:1.5px;color:var(--mut)}
+.ptbw{overflow-x:auto}.ptb{width:100%;border-collapse:collapse;font-size:14px}
+.ptb th{text-align:left;color:var(--mut);font-size:12px;text-transform:uppercase;letter-spacing:1px;padding:8px 10px;border-bottom:1px solid var(--line);white-space:nowrap}
+.ptb td{padding:9px 10px;border-bottom:1px solid #20272e;white-space:nowrap}.ptb tbody tr{cursor:pointer}.ptb tbody tr:hover{background:#1c2228}
+.mono{font-family:ui-monospace,Menlo,Consolas,monospace;letter-spacing:1px}
+.libg{display:grid;grid-template-columns:repeat(auto-fill,minmax(120px,1fr));gap:8px}
+.libc{background:#0f1317;border:1px solid var(--line);border-radius:10px;padding:10px 12px;cursor:pointer;display:grid;gap:1px}.libc:hover{border-color:var(--gold2)}
+.libc b{font-size:20px;color:var(--gold)}.libc span{font-size:13px}.libc small{color:var(--mut)}
+#pm{position:fixed;inset:0;background:#000b;z-index:8;overflow:auto;padding:20px 12px}#pmc{max-width:780px;margin:0 auto}
+.sec{border-top:1px solid var(--line);margin-top:16px;padding-top:14px}.sec h4{margin:0 0 10px;font-size:13px;text-transform:uppercase;letter-spacing:1.5px;color:var(--mut)}
+.fg{display:grid;grid-template-columns:repeat(auto-fill,minmax(130px,1fr));gap:10px}.fg label{display:grid;gap:4px;font-size:12.5px;color:var(--mut)}
+.row2{display:flex;gap:8px;flex-wrap:wrap;align-items:center}
+.hlp{color:var(--mut);font-size:12.5px;margin:6px 0 0}
+#fq{width:200px}
 </style></head><body><div class="wrap">
 <header><div class="logo"><b>STRIKE ZONE</b><span>Admin</span></div>
-<div class="pills"><div class="pill" id="p1"><i></i><span>Checking…</span></div><div class="pill" id="p2"><i></i><span>Storage…</span></div></div></header>
+<div class="pills"><div class="pill" id="p1"><i></i><span>Checking…</span></div><div class="pill" id="p2"><i></i><span>Storage…</span></div><button id="lo" class="hide" style="padding:5px 12px;font-size:12.5px">Sign out</button></div></header>
 
 <div id="login" class="card"><h2>Admin sign-in</h2><p>Enter the password set in Vercel to manage game files.</p>
 <div class="row"><input id="pw" type="password" placeholder="Admin password" autocomplete="current-password"><button class="pri" id="go">Unlock</button></div></div>
@@ -78,10 +101,10 @@ input[type=password]:focus{outline:2px solid #e0b45c55;border-color:var(--gold)}
  <div id="hint"></div>
  <div id="gsw" class="hide"><b>New skins work on</b><div class="chips" id="gsc"></div></div>
  <div id="queue"></div>
- <div class="lib-h"><h3 id="lt"></h3><button id="rf">Refresh</button></div>
+ <div class="lib-h"><h3 id="lt"></h3><div style="display:flex;gap:8px;align-items:center"><input id="fq" class="inp hide" type="search" placeholder="Filter this list…" autocomplete="off"><button id="rf">Refresh</button></div></div>
  <div id="lib"></div>
 </div>
-</div><div id="toast"></div>
+</div><div id="pm" class="hide"><div id="pmc" class="card"></div></div><div id="toast"></div>
 <script src="https://cdnjs.cloudflare.com/ajax/libs/three.js/r128/three.min.js"></script>
 <script src="https://cdn.jsdelivr.net/npm/three@0.128.0/examples/js/loaders/GLTFLoader.js"></script>
 <script src="https://cdn.jsdelivr.net/npm/three@0.128.0/examples/js/loaders/DRACOLoader.js"></script>
@@ -89,9 +112,9 @@ input[type=password]:focus{outline:2px solid #e0b45c55;border-color:var(--gold)}
 <script src="https://cdn.jsdelivr.net/npm/three@0.128.0/examples/js/loaders/OBJLoader.js"></script>
 <script>
 const $=i=>document.getElementById(i);let pw='',tab='guns',FILES=[],THUMB={},THUMBO={},SKM={},OPM={},ATM={},STM={};
-const TABS=[['guns','Guns'],['optics','Optics'],['attachments','Attachments'],['maps','Maps'],['characters','Characters'],['skins','Skins'],['outfits','Outfits'],['accessories','Accessories'],['bodies','Character skins'],['store','Store']];
-const EXT={guns:['.glb','.obj'],maps:['.glb','.obj','.json'],characters:['.glb','.obj'],skins:['.png','.jpg','.jpeg','.webp'],optics:['.glb','.obj'],attachments:['.glb','.obj'],outfits:['.png','.jpg','.jpeg','.webp'],accessories:['.glb'],bodies:['.glb'],store:[]};
-const HINT={attachments:'Upload a <b>muzzle</b> (suppressor, brake…), <b>magazine</b> or <b>grip</b> model (.glb or .obj). The file name becomes its name in the loadout (a name containing "mag" or "grip" is filed under that type automatically). Below, set its <b>type</b>, the <b>stats</b> it changes, which <b>guns</b> it works on, and fine-tune its size and position. Press Save when done. Scopes and sights go in the Optics tab.',optics:'Upload a scope / sight model (.glb or .obj). The file name becomes its name in the loadout. Then set its <b>zoom</b> and <b>size</b> below and press Save. Pick the optic per gun in Loadout → Attachments.',guns:'Name the file after the gun: <b>ak</b>, <b>m4</b>, <b>awp</b>, <b>mp9</b>, <b>gl</b> or <b>de</b> (names like m4a1, glock and deagle also work).',
+const TABS=[['dash','Dashboard'],['players','Players'],['guns','Guns'],['optics','Optics'],['attachments','Attachments'],['maps','Maps'],['characters','Characters'],['skins','Skins'],['outfits','Outfits'],['accessories','Accessories'],['bodies','Character skins'],['store','Store']];
+const EXT={guns:['.glb','.obj'],maps:['.glb','.obj','.json'],characters:['.glb','.obj'],skins:['.png','.jpg','.jpeg','.webp'],optics:['.glb','.obj'],attachments:['.glb','.obj'],outfits:['.png','.jpg','.jpeg','.webp'],accessories:['.glb'],bodies:['.glb'],store:[],dash:[],players:[]};
+const HINT={dash:'Overview of your game: player numbers, top and newest players, and what is in each file library. Use the box below to jump straight to any player by their <b>player ID</b> or username.',players:'Find a player by their <b>player ID</b> (the 8-character code on their profile) or username, then open them to change their <b>level, XP, stats and credits</b>, give or take away store items, reset their password or ban them. Players see the change after they reload the game or finish a match.',attachments:'Upload a <b>muzzle</b> (suppressor, brake…), <b>magazine</b> or <b>grip</b> model (.glb or .obj). The file name becomes its name in the loadout (a name containing "mag" or "grip" is filed under that type automatically). Below, set its <b>type</b>, the <b>stats</b> it changes, which <b>guns</b> it works on, and fine-tune its size and position. Press Save when done. Scopes and sights go in the Optics tab.',optics:'Upload a scope / sight model (.glb or .obj). The file name becomes its name in the loadout. Then set its <b>zoom</b> and <b>size</b> below and press Save. Pick the optic per gun in Loadout → Attachments.',guns:'Name the file after the gun: <b>ak</b>, <b>m4</b>, <b>awp</b>, <b>mp9</b>, <b>gl</b> or <b>de</b> (names like m4a1, glock and deagle also work).',
  maps:'The file name becomes the map name. Optional: a <b>.json</b> with the same name sets spawn points. Keep maps under ~10 MB.',
  characters:'Any file name. Upload several and each bot gets a random one.',
  skins:'PNG, JPG or WebP. Square images (512–2048 px) work best. The file name becomes the skin name.',
@@ -117,21 +140,25 @@ fetch('/api/login').then(r=>r.json()).then(d=>{pill('p1',d.passwordSet,d.passwor
 async function login(){pw=$('pw').value.trim();if(!pw)return;$('go').disabled=true;
  const r=await post('/api/login',{}),d=await r.json().catch(()=>({}));$('go').disabled=false;
  if(!r.ok){toast(d.error||'Login failed ('+r.status+')','err');return}
- $('login').classList.add('hide');$('app').classList.remove('hide');setTab('guns');load()}
+ try{sessionStorage.setItem('sz_apw',pw)}catch(e){}enter()}
+function enter(){$('login').classList.add('hide');$('app').classList.remove('hide');$('lo').classList.remove('hide');setTab('dash');load()}
 $('go').onclick=login;$('pw').onkeydown=e=>{if(e.key=='Enter')login()};
 
-function drawTabs(){$('tabs').innerHTML='';TABS.forEach(([k,n])=>{const d=document.createElement('div');d.className='tab'+(tab==k?' on':'');d.innerHTML=n+' <em>'+FILES.filter(f=>f.path.startsWith(k+'/')).length+'</em>';d.onclick=()=>setTab(k);$('tabs').append(d)})}
-function setTab(k){tab=k;drawTabs();$('hint').innerHTML=HINT[k];$('dsm').textContent='Accepted: '+EXT[k].join('  ');$('fi').accept=EXT[k].join(',');$('lt').textContent=TABS.find(t=>t[0]==k)[1]+' library';$('gsw').classList.toggle('hide',k!='skins');$('drop').classList.toggle('hide',k=='store');render()}
+function drawTabs(){$('tabs').innerHTML='';TABS.forEach(([k,n])=>{const d=document.createElement('div');d.className='tab'+(tab==k?' on':'');d.innerHTML=n+(k=='dash'?'':' <em>'+(k=='players'?(PLAYERS?PTOTAL:'–'):FILES.filter(f=>f.path.startsWith(k+'/')).length)+'</em>');d.onclick=()=>setTab(k);$('tabs').append(d)})}
+function setTab(k){tab=k;drawTabs();$('hint').innerHTML=HINT[k];$('dsm').textContent='Accepted: '+EXT[k].join('  ');$('fi').accept=EXT[k].join(',');$('lt').textContent=TABS.find(t=>t[0]==k)[1]+(['dash','players','store'].includes(k)?'':' library');$('fq').value='';$('fq').classList.toggle('hide',k=='dash'||k=='players');$('hint').style.display=HINT[k]?'':'none';$('gsw').classList.toggle('hide',k!='skins');$('drop').classList.toggle('hide',['store','dash','players'].includes(k));render()}
 
 function chips(el,sel,onchange){el.innerHTML='';GUNS.forEach(([id,n])=>{const c=document.createElement('span');c.className='chip'+(sel.has(id)?' on':'');c.textContent=n;c.onclick=()=>{sel.has(id)?sel.delete(id):sel.add(id);c.classList.toggle('on');onchange&&onchange()};el.append(c)})}
 const newSel=new Set(GUNS.map(g=>g[0]));chips($('gsc'),newSel);
 
 async function load(){const r=await post('/api/list',{}),d=await r.json().catch(()=>({}));if(!r.ok){toast('Could not list files: '+(d.error||r.status),'err');return}
  FILES=d;try{const m=await (await fetch('/api/manifest',{cache:'no-store'})).json();THUMB={};(m.skins||[]).forEach(s=>THUMB[s.key||s.name]=s.url);THUMBO={};(m.outfits||[]).forEach(s=>THUMBO[s.key]=s.url)}catch(e){}
- try{SKM=await (await post('/api/skinmap',{})).json()||{}}catch(e){SKM={}}try{OPM=await (await post('/api/optmap',{})).json()||{}}catch(e){OPM={}}try{ATM=await (await post('/api/attmap',{})).json()||{}}catch(e){ATM={}}try{STM=await (await post('/api/storemap',{})).json()||{}}catch(e){STM={}}drawTabs();render()}
+ try{SKM=await (await post('/api/skinmap',{})).json()||{}}catch(e){SKM={}}try{OPM=await (await post('/api/optmap',{})).json()||{}}catch(e){OPM={}}try{ATM=await (await post('/api/attmap',{})).json()||{}}catch(e){ATM={}}try{STM=await (await post('/api/storemap',{})).json()||{}}catch(e){STM={}}await loadPlayers();drawTabs();render()}
 $('rf').onclick=()=>load();
 
-function render(){const box=$('lib'),rows=FILES.filter(f=>f.path.startsWith(tab+'/'));box.innerHTML='';
+function render(){render0();applyFilter()}
+function render0(){const box=$('lib'),rows=FILES.filter(f=>f.path.startsWith(tab+'/'));box.innerHTML='';
+ if(tab=='dash'){renderDash(box);return}
+ if(tab=='players'){renderPlayers(box);return}
  if(tab=='store'){renderStore(box);return}
  if(!rows.length){box.innerHTML='<div class="empty">Nothing here yet. Drop some files above.</div>';return}
  if(tab=='skins'){const g=document.createElement('div');g.className='grid';
@@ -259,4 +286,102 @@ async function start(files){if(!files.length)return;const T0=tab,q=$('queue'),jo
   if(fo=='guns'&&!gunId(n))toast(n+' uploaded, but the name isn\'t a known gun – rename it (ak, m4, awp, mp9, gl, de).','err');else toast(n+' uploaded','ok')}
  if(sorted){try{await post('/api/attmap',{map:ATM})}catch(e){}}
  await load()}
+
+/* ================= Dashboard + Players (manage accounts by player ID) ================= */
+let PLAYERS=null,PTOTAL=0,PSORT='lvl',PQ='',P=null,PO=null;
+const MAXL=100,needL=n=>5000+500*(n-1),xpFor=L=>{L=Math.max(1,Math.min(MAXL,Math.floor(+L)||1));return 5000*(L-1)+250*(L-1)*(L-2)};
+function lvlOf(xp){let l=1,r=Math.max(0,xp|0);while(l<MAXL&&r>=needL(l)){r-=needL(l);l++}return l>=MAXL?{level:MAXL,into:0,next:0,max:true}:{level:l,into:r,next:needL(l)}}
+const num=n=>(+n||0).toLocaleString(),kd=p=>(p.kills/Math.max(1,p.deaths)).toFixed(2),day=t=>t?new Date(t).toLocaleDateString():'–';
+const cn=v=>Math.max(0,Math.min(1e9,Math.floor(+v)||0));
+const NF=['xp','kills','deaths','assists','wins','losses','coins'];
+const ILAB={o:'Outfit',a:'Accessory',b:'Character skin',s:'Gun camo'},labOf=id=>ILAB[id[0]]||'Item';
+const api2=async o=>{const r=await post('/api/players',o),d=await r.json().catch(()=>({}));if(!r.ok)throw new Error(d.error||('Server error '+r.status));return d};
+async function loadPlayers(){try{const d=await api2({a:'list'});PLAYERS=d.players;PTOTAL=d.total}catch(e){PLAYERS=null;toast('Players: '+e.message,'err')}}
+function applyFilter(){const v=($('fq').value||'').trim().toLowerCase();document.querySelectorAll('#lib .item,#lib .sk').forEach(e=>{e.style.display=!v||e.textContent.toLowerCase().includes(v)?'':'none'})}
+$('fq').oninput=applyFilter;
+
+const SORTS={lvl:['Highest level',(a,b)=>b.xp-a.xp],kills:['Most kills',(a,b)=>b.kills-a.kills],kd:['Best K/D',(a,b)=>b.kills/Math.max(1,b.deaths)-a.kills/Math.max(1,a.deaths)],coins:['Most credits',(a,b)=>b.coins-a.coins],new:['Newest accounts',(a,b)=>b.created-a.created],act:['Recently active',(a,b)=>b.updated-a.updated],name:['Name A–Z',(a,b)=>a.name.localeCompare(b.name)]};
+function lookup(v){v=String(v||'').trim();if(!v)return;const q=v.toLowerCase(),hit=(PLAYERS||[]).find(p=>p.id.toLowerCase()==q||p.key==q);openPlayer(hit?{k:hit.key}:{id:v})}
+function lookupBox(){const d=document.createElement('div');d.className='pbar';d.innerHTML='<input class="inp" id="lk" placeholder="Player ID (e.g. K7M2QX9A) or username" maxlength="40" autocapitalize="off" spellcheck="false"><button class="pri" id="lkg">Open player</button>';
+ const go=()=>lookup(d.querySelector('#lk').value);d.querySelector('#lkg').onclick=go;d.querySelector('#lk').onkeydown=e=>{if(e.key=='Enter')go()};return d}
+const prow=p=>'<tr data-k="'+esc(p.key)+'"><td><b>'+esc(p.name)+'</b>'+(p.banned?'<span class="tag warn">banned</span>':'')+'</td><td class="mono">'+esc(p.id||'–')+'</td><td>'+p.level+'</td><td>'+kd(p)+'</td><td>'+p.wins+' / '+p.losses+'</td><td>'+num(p.coins)+'</td><td>'+day(p.created)+'</td></tr>';
+function wireRows(el){el.querySelectorAll('tr[data-k]').forEach(r=>r.onclick=()=>openPlayer({k:r.dataset.k}))}
+
+function renderDash(box){
+ const L=PLAYERS||[],wk=Date.now()-7*864e5,tot=k=>L.reduce((s,p)=>s+(p[k]||0),0);
+ box.append(lookupBox());
+ const cards=[['Players',num(PTOTAL)],['New this week',num(L.filter(p=>p.created>wk).length)],['Total kills',num(tot('kills'))],['Matches played',num(tot('wins')+tot('losses'))],['Credits held',num(tot('coins'))],['Banned',num(L.filter(p=>p.banned).length)]];
+ const st=document.createElement('div');st.className='stats';st.innerHTML=cards.map(c=>'<div class="stat"><b>'+c[1]+'</b><span>'+c[0]+'</span></div>').join('');box.append(st);
+ const mini=(t,arr)=>'<div class="card"><h4 class="ch">'+t+'</h4>'+(arr.length?'<div class="ptbw"><table class="ptb"><tbody>'+arr.map(p=>'<tr data-k="'+esc(p.key)+'"><td><b>'+esc(p.name)+'</b></td><td class="mono">'+esc(p.id||'–')+'</td><td>Lv '+p.level+'</td></tr>').join('')+'</tbody></table></div>':'<div class="hlp">No players yet.</div>')+'</div>';
+ const two=document.createElement('div');two.className='two';
+ two.innerHTML=mini('Top players',L.slice().sort(SORTS.lvl[1]).slice(0,5))+mini('Newest players',L.slice().sort(SORTS.new[1]).slice(0,5));box.append(two);wireRows(two);
+ const libs=TABS.filter(t=>!['dash','players','store'].includes(t[0])).map(([k,n])=>{const fs=FILES.filter(f=>f.path.startsWith(k+'/'));return[k,n,fs.length,fs.reduce((s,f)=>s+f.size,0)]});
+ const lc=document.createElement('div');lc.className='card';lc.style.marginTop='12px';
+ lc.innerHTML='<h4 class="ch">File libraries</h4><div class="libg">'+libs.map(l=>'<div class="libc" data-t="'+l[0]+'"><b>'+l[2]+'</b><span>'+esc(l[1])+'</span><small>'+(l[3]?mb(l[3]):'empty')+'</small></div>').join('')+'</div>';
+ box.append(lc);lc.querySelectorAll('.libc').forEach(e=>e.onclick=()=>setTab(e.dataset.t));
+ if(!PLAYERS){const w=document.createElement('p');w.className='hlp';w.textContent='Player data could not be loaded – check the storage status at the top and press Refresh.';box.prepend(w)}}
+
+function renderPlayers(box){
+ if(!PLAYERS){box.innerHTML='<div class="empty">Could not load players. Check the storage status at the top, then press Refresh.</div>';return}
+ box.append(lookupBox());
+ const bar=document.createElement('div');bar.className='pbar';
+ bar.innerHTML='<input class="inp" id="ps" placeholder="Filter the list by name or ID…" autocomplete="off"><select class="inp" id="pso">'+Object.keys(SORTS).map(k=>'<option value="'+k+'">'+SORTS[k][0]+'</option>').join('')+'</select>';
+ box.append(bar);const tb=document.createElement('div');tb.className='card ptbw';box.append(tb);
+ const ps=bar.querySelector('#ps'),so=bar.querySelector('#pso');ps.value=PQ;so.value=PSORT;
+ const draw=()=>{const q=PQ.trim().toLowerCase(),rows=PLAYERS.filter(p=>!q||p.name.toLowerCase().includes(q)||p.id.toLowerCase().includes(q)).sort(SORTS[PSORT][1]);
+  if(!rows.length){tb.innerHTML='<div class="hlp" style="text-align:center;padding:18px">'+(PLAYERS.length?'No players match.':'No players have signed up yet.')+'</div>';return}
+  tb.innerHTML='<table class="ptb"><thead><tr><th>Name</th><th>Player ID</th><th>Lvl</th><th>K/D</th><th>W / L</th><th>Credits</th><th>Joined</th></tr></thead><tbody>'+rows.slice(0,150).map(prow).join('')+'</tbody></table>'+(rows.length>150?'<div class="hlp" style="padding:10px">Showing 150 of '+rows.length+' – narrow the search, or paste a player ID above.</div>':'')+(PTOTAL>PLAYERS.length?'<div class="hlp" style="padding:0 10px 10px">Only the '+PLAYERS.length+' most recently active of '+PTOTAL+' players are listed here. Use the ID box above for anyone else.</div>':'');wireRows(tb)};
+ ps.oninput=()=>{PQ=ps.value;draw()};so.onchange=()=>{PSORT=so.value;draw()};draw()}
+
+/* ---- player editor (modal) ---- */
+async function openPlayer(ref){try{const d=await api2(Object.assign({a:'get'},ref));P=d.player;PO=Object.assign({},P);showEditor()}catch(e){toast(e.message,'err')}}
+function closeEd(){$('pm').classList.add('hide');P=null;PO=null}
+$('pm').onclick=e=>{if(e.target==$('pm'))closeEd()};document.addEventListener('keydown',e=>{if(e.key=='Escape'&&P)closeEd()});
+async function act(o,msg,nums){try{const d=await api2(Object.assign({k:P.key},o));P=d.player;PO=Object.assign({},P);if(nums)fillNums();drawHead();drawItems();drawAcct();toast(msg||'Done','ok');await loadPlayers();drawTabs();if(tab=='players'||tab=='dash')render()}catch(e){toast(e.message,'err')}}
+function fillNums(){$('e-lv').value=lvlOf(P.xp).level;$('e-xp').value=P.xp;NF.slice(1).forEach(k=>$('e-'+k).value=P[k]||0);xpInfo()}
+function xpInfo(){const L=lvlOf(cn($('e-xp').value));$('e-lr').textContent=L.max?'Level '+MAXL+' (max)':'Level '+L.level+' · '+num(L.into)+' / '+num(L.next)+' XP into this level'}
+function showEditor(){
+ $('pm').classList.remove('hide');
+ $('pmc').innerHTML='<div id="e-h"></div>'+
+ '<div class="sec"><h4>Level &amp; XP</h4><div class="row2"><span class="hlp" style="margin:0;width:44px">Level</span><button data-lv="-10">−10</button><button data-lv="-1">−1</button><input class="inp" id="e-lv" type="number" min="1" max="'+MAXL+'" style="width:84px"><button data-lv="1">+1</button><button data-lv="10">+10</button><button data-lv="max">Max ('+MAXL+')</button></div>'+
+ '<div class="row2" style="margin-top:10px"><span class="hlp" style="margin:0;width:44px">XP</span><input class="inp" id="e-xp" type="number" min="0" style="width:150px"><span class="hlp" id="e-lr" style="margin:0"></span></div>'+
+ '<p class="hlp">Picking a level puts the player at the start of that level. You can also type an exact XP amount – the level follows from it.</p></div>'+
+ '<div class="sec"><h4>Stats &amp; credits</h4><div class="fg">'+[['kills','Kills'],['deaths','Deaths'],['assists','Assists'],['wins','Wins'],['losses','Losses'],['coins','Credits']].map(([k,n])=>'<label>'+n+'<input class="inp" id="e-'+k+'" type="number" min="0"></label>').join('')+'</div>'+
+ '<div class="row2" style="margin-top:10px"><button data-cr="100">+100 credits</button><button data-cr="1000">+1,000</button><button data-cr="10000">+10,000</button><button class="dng" id="e-rs">Zero match stats</button></div></div>'+
+ '<div class="savebar"><button class="pri" id="e-save">Save changes</button><button id="e-close">Close</button><small style="color:var(--mut)">Level, XP, stats and credits are saved together with this button.</small></div>'+
+ '<div class="sec"><h4>Items</h4><div id="e-items"></div></div><div class="sec"><h4>Account</h4><div id="e-acct"></div></div>';
+ const lv=$('e-lv'),xp=$('e-xp');
+ lv.oninput=()=>{xp.value=xpFor(lv.value);xpInfo()};lv.onchange=()=>{lv.value=Math.max(1,Math.min(MAXL,Math.floor(+lv.value)||1));xp.value=xpFor(lv.value);xpInfo()};
+ xp.oninput=()=>{lv.value=lvlOf(cn(xp.value)).level;xpInfo()};
+ $('pmc').querySelectorAll('[data-lv]').forEach(b=>b.onclick=()=>{const d=b.dataset.lv,cur=lvlOf(cn(xp.value)).level,n=d=='max'?MAXL:Math.max(1,Math.min(MAXL,cur+(+d)));lv.value=n;xp.value=xpFor(n);xpInfo()});
+ $('pmc').querySelectorAll('[data-cr]').forEach(b=>b.onclick=()=>{$('e-coins').value=cn((+$('e-coins').value||0)+(+b.dataset.cr))});
+ $('e-rs').onclick=()=>['kills','deaths','assists','wins','losses'].forEach(k=>$('e-'+k).value=0);
+ $('e-save').onclick=savePlayer;$('e-close').onclick=closeEd;
+ fillNums();drawHead();drawItems();drawAcct()}
+async function savePlayer(){const set={};NF.forEach(k=>{const v=cn($('e-'+k).value);if(v!==(PO[k]||0))set[k]=v});if(!Object.keys(set).length){toast('Nothing changed');return}await act({a:'update',set},'Saved '+P.name,true)}
+function drawHead(){$('e-h').innerHTML='<h2 style="margin:0 0 4px">'+esc(P.name)+(P.banned?' <span class="tag warn">banned</span>':'')+'</h2><div class="hlp" style="margin:0">Player ID <b class="mono" style="color:var(--gold);font-size:15px">'+esc(P.id||'(assigned at their next login)')+'</b> '+(P.id?'<button id="e-copy" style="padding:3px 9px;font-size:12px">Copy</button> ':'')+'· joined '+day(P.created)+' · Level '+P.level+'</div>';
+ const c=$('e-copy');if(c)c.onclick=()=>{try{navigator.clipboard.writeText(P.id);toast('Player ID copied','ok')}catch(e){toast(P.id)}}}
+function drawItems(){
+ const have=new Set(P.owned),all=[];[['o','outfits'],['a','accessories'],['b','bodies'],['s','skins']].forEach(([p,fo])=>FILES.filter(f=>f.path.startsWith(fo+'/')).forEach(f=>all.push(p+':'+baseOf(f.path.split('/')[1]))));
+ const miss=all.filter(i=>!have.has(i)),el=$('e-items');
+ el.innerHTML='<div class="hlp" style="margin:0 0 8px">Owned ('+P.owned.length+') – click one to take it away</div><div class="chips" id="e-own">'+(P.owned.length?P.owned.map(i=>'<span class="chip on" data-rm="'+esc(i)+'" title="Remove">'+esc(i.slice(2))+' <small>· '+labOf(i)+' ✕</small></span>').join(''):'<span class="hlp" style="margin:0">Nothing owned yet.</span>')+'</div>'+
+ '<div class="row2" style="margin-top:12px"><select class="inp" id="e-give" style="max-width:100%">'+(miss.length?miss.map(i=>'<option value="'+esc(i)+'">'+labOf(i)+': '+esc(i.slice(2))+'</option>').join(''):'<option value="">Owns every uploaded item</option>')+'</select><button id="e-gb"'+(miss.length?'':' disabled')+'>Give item</button><button id="e-ga"'+(miss.length?'':' disabled')+'>Give all ('+miss.length+')</button><button id="e-eq" class="dng">Reset worn look</button></div>';
+ el.querySelectorAll('[data-rm]').forEach(c=>c.onclick=()=>{if(confirm('Take "'+c.dataset.rm.slice(2)+'" away from '+P.name+'?'))act({a:'update',revoke:[c.dataset.rm]},'Item removed')});
+ $('e-gb').onclick=()=>{const v=$('e-give').value;if(v)act({a:'update',grant:[v]},'Item given')};
+ $('e-ga').onclick=()=>{if(miss.length&&confirm('Give '+P.name+' all '+miss.length+' items?'))act({a:'update',grant:miss},'Items given')};
+ $('e-eq').onclick=()=>{if(confirm('Take everything off '+P.name+"'s character?"))act({a:'update',resetEquip:true},'Look reset')}}
+function drawAcct(){
+ const el=$('e-acct'),b=P.banned;
+ el.innerHTML='<div class="row2"><input class="inp" id="e-pw" type="text" autocomplete="off" placeholder="New password (6+ characters)" style="flex:1;min-width:200px"><button id="e-pwb">Set password</button></div>'+
+ '<div class="row2" style="margin-top:12px">'+(b?'<span class="tag warn" style="margin:0">Banned'+(b.reason?': '+esc(b.reason):'')+' · '+day(b.at)+'</span><button id="e-ub">Unban</button>':'<input class="inp" id="e-br" maxlength="200" placeholder="Ban reason (shown to the player)" style="flex:1;min-width:200px"><button class="dng" id="e-bb">Ban player</button>')+'</div>'+
+ '<div class="row2" style="margin-top:12px"><input class="inp" id="e-dc" placeholder="Type the username to enable delete" style="flex:1;min-width:200px"><button class="dng" id="e-db" disabled>Delete account</button></div>'+
+ '<p class="hlp">A banned player is refused at login and cannot sync matches. Deleting removes the account and its player ID for good.</p>';
+ $('e-pwb').onclick=async()=>{const v=$('e-pw').value;if(v.length<6){toast('Password must be at least 6 characters','err');return}await act({a:'password',newPassword:v},'Password changed');if($('e-pw'))$('e-pw').value=''};
+ if(b)$('e-ub').onclick=()=>act({a:'unban'},'Player unbanned');else $('e-bb').onclick=()=>{if(confirm('Ban '+P.name+'?'))act({a:'ban',reason:$('e-br').value},'Player banned')};
+ $('e-dc').oninput=()=>{$('e-db').disabled=$('e-dc').value.trim().toLowerCase()!=P.key};
+ $('e-db').onclick=async()=>{if(!confirm('Permanently delete '+P.name+'? This cannot be undone.'))return;try{await api2({a:'delete',k:P.key,confirm:P.name});toast('Deleted '+P.name,'ok');closeEd();await loadPlayers();drawTabs();render()}catch(e){toast(e.message,'err')}}}
+
+/* ---- keep the admin signed in for this browser tab ---- */
+$('lo').onclick=()=>{try{sessionStorage.removeItem('sz_apw')}catch(e){}location.reload()};
+try{const sp=sessionStorage.getItem('sz_apw');if(sp){pw=sp;post('/api/login',{}).then(r=>{if(r.ok)enter();else{pw='';try{sessionStorage.removeItem('sz_apw')}catch(e){}}}).catch(()=>{pw=''})}}catch(e){}
 </script></body></html>
