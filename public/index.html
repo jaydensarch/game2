@@ -861,6 +861,14 @@ const acc=new Float32Array(n*3),a=new T.Vector3(),b=new T.Vector3(),c=new T.Vect
 for(let t=0;t+2<tc;t+=3){const i0=idx?idx[t]:t,i1=idx?idx[t+1]:t+1,i2=idx?idx[t+2]:t+2;a.fromArray(pos,i0*3);b.fromArray(pos,i1*3);c.fromArray(pos,i2*3);f.subVectors(c,b).cross(a.sub(b));/* area-weighted */
 for(const i of [i0,i1,i2]){const r=rep[i];acc[r*3]+=f.x;acc[r*3+1]+=f.y;acc[r*3+2]+=f.z}}
 const out=new Float32Array(n*3);for(let i=0;i<n;i++){const r=rep[i];f.set(acc[r*3],acc[r*3+1],acc[r*3+2]);const l=f.length();if(l>1e-20)f.multiplyScalar(1/l);else f.set(0,1,0);out[i*3]=f.x;out[i*3+1]=f.y;out[i*3+2]=f.z}return out}
+/* SPIKES: a triangle with one corner flung far away (a vertex bound to the wrong bone) is drawn as a long thin spike. Edges much longer than the garment's normal ones are cut. */
+function spikeFn(P,idx,ref){if(!idx||!(ref>0))return null;const m=Math.floor(idx.count/3),L=(a,b)=>Math.hypot(P[a*3]-P[b*3],P[a*3+1]-P[b*3+1],P[a*3+2]-P[b*3+2]),ed=[],st=Math.max(1,Math.floor(m/3000));
+for(let t=0;t<m;t+=st){const a=idx.getX(t*3),b=idx.getX(t*3+1),c=idx.getX(t*3+2);ed.push(Math.max(L(a,b),L(b,c),L(c,a)))}
+ed.sort((x,y)=>x-y);const thr=Math.max((ed[ed.length>>1]||0)*7,ref*.045);return(a,b,c)=>Math.max(L(a,b),L(b,c),L(c,a))>thr}
+function cutTris(ix,groups,drop){const grs=(groups&&groups.length)?groups:[{start:0,count:ix.count,materialIndex:0,w:1}],out=[],og=[];let tot=0,dr=0;
+for(const g of grs){const st=out.length;for(let k=g.start;k+2<g.start+g.count;k+=3){const a=ix.getX(k),b=ix.getX(k+1),c=ix.getX(k+2);tot++;if(drop(a,b,c)){dr++;continue}out.push(a,b,c)}og.push({start:st,count:out.length-st,materialIndex:g.materialIndex,w:g.w})}
+return{out,og:og.filter(g=>!g.w),tot,dr}}
+const RGC={},STC={},BFC={};
 /* garment skin -> the mannequin's bones. Returns {geo, bones, inv, bind} or null.
    Everything about the garment is measured the way it is actually DRAWN (its vertices skinned in the rest pose, and its bones at their rest positions in the same world),
    never from the raw mesh numbers or the inverse-bind matrices: real exports (Sketchfab / Unreal / MetaHuman) keep the raw mesh tiny or Z-up, put the real size and
@@ -904,27 +912,26 @@ np[i*3]=acc.x;np[i*3+1]=acc.y;np[i*3+2]=acc.z}
 /* sit the cloth a little off the body (so it doesn't z-fight with / sink into the skin), then give it smooth normals */
 const idxArr=gm.geometry.index?Array.from({length:gm.geometry.index.count},(_,q)=>gm.geometry.index.getX(q)):null,n0=weldNormals(np,idxArr),infl=mSpan*.004;
 for(let i=0;i<n;i++){np[i*3]+=n0[i*3]*infl;np[i*3+1]+=n0[i*3+1]*infl;np[i*3+2]+=n0[i*3+2]*infl}
-const lay=garmentLayer(key,accSlot(key,{}));if(lay){const nL=weldNormals(np,idxArr),iL=lay*mSpan*.006;for(let i=0;i<n*3;i++)np[i]+=nL[i]*iL}
+const lay=garmentLayer(key,accSlot(key,{}));if(lay){const nL=weldNormals(np,idxArr),iL=lay*mSpan*.012;for(let i=0;i<n*3;i++)np[i]+=nL[i]*iL}
 /* the mannequin's chest / thighs are often fuller than the body the garment was made for: anything that ended up inside the skin is pushed back out */
-const F=bodyField(bm,null),pushed=pushOutOfBody(np,idxArr,F,mSpan*.006+lay*mSpan*.006,mSpan*.06);
+const F=bodyField(bm,null),pushed=pushOutOfBody(np,idxArr,F,mSpan*.006+lay*mSpan*.012,mSpan*.06);
 const n1=weldNormals(np,idxArr),m3=new T.Matrix3().getNormalMatrix(bi);
 for(let i=0;i<n;i++){nv.set(n1[i*3],n1[i*3+1],n1[i*3+2]).applyMatrix3(m3).normalize();nn[i*3]=nv.x;nn[i*3+1]=nv.y;nn[i*3+2]=nv.z}
 for(let i=0;i<n;i++){acc.set(np[i*3],np[i*3+1],np[i*3+2]).applyMatrix4(bi);np[i*3]=acc.x;np[i*3+1]=acc.y;np[i*3+2]=acc.z}
 smooth=true;info='retargeted, scale '+s.toFixed(3)+' (from '+sMethod+'), '+Object.keys(gi).length+' bones matched, '+pushed+' of '+n+' vertices pushed out of the skin'}
-/* FIT GUARD: a top must never cover the head, and pants must never climb above the waist. Triangles that end up in the wrong part of the body (bound to the head, or
-   sitting above the neck / waist line) are cut away instead of being drawn over the face. If that is a big part of the garment, the garment simply does not fit this
-   body: it is refused (null) rather than left on the character looking broken. */
-let keepIdx=null,keepGroups=null;{const slot=accSlot(key,{});if((slot=='torso'||slot=='legs')&&gm.geometry.index){
-const mpos=k=>mb.has(k)?new T.Vector3().setFromMatrixPosition(mI[mb.get(k)].clone().invert()):null,hd=mpos('head'),nkp=mpos('neck'),hp=mpos('hips');
+/* FIT GUARD: a top must never cover the head, and pants must never climb above the waist. ANY triangle touching the wrong part of the body (bound to the head, or above the
+   neck / waist line) is cut away - not just the ones mostly in it, which left single corners stretched into spikes. Over-long spike triangles are cut for every garment.
+   If too much of a garment lands in the wrong place it does not fit this body: it is refused (null) rather than left on the character looking broken. */
+let keepIdx=null,keepGroups=null;{const slot=accSlot(key,{}),ix0=gm.geometry.index;if(ix0){
+const mpos=k=>mb.has(k)?new T.Vector3().setFromMatrixPosition(mI[mb.get(k)].clone().invert()):null,hd=mpos('head'),nkp=mpos('neck'),hp=mpos('hips'),guard=slot=='torso'||slot=='legs';
 let topY=null;if(slot=='torso'&&hd&&nkp)topY=nkp.y+(hd.y-nkp.y)*.5;else if(slot=='legs'&&hd&&hp)topY=hp.y+(hd.y-hp.y)*.12;
-const badKey=slot=='torso'?/^head/:/^(spine\d*|neck|head|(left|right)(shoulder|arm|forearm|hand.*))$/,bad=new Uint8Array(n),yy=new T.Vector3();
-for(let i=0;i<n;i++){let b=0,bw=-1;for(let j=0;j<4;j++)if(wf[i*4+j]>bw){bw=wf[i*4+j];b=ni[i*4+j]}
-if(badKey.test(nk2(bm.skeleton.bones[b].name))){bad[i]=1;continue}
-if(mode=='retarget'&&topY!==null){yy.set(np[i*3],np[i*3+1],np[i*3+2]).applyMatrix4(bm.bindMatrix);if(yy.y>topY)bad[i]=1}}
-const ix0=gm.geometry.index,grs=(gm.geometry.groups&&gm.geometry.groups.length)?gm.geometry.groups:[{start:0,count:ix0.count,materialIndex:0,_whole:1}],out=[],og=[];let tot=0,drop=0;
-for(const g of grs){const st=out.length;for(let k=g.start;k+2<g.start+g.count;k+=3){const a=ix0.getX(k),b=ix0.getX(k+1),c=ix0.getX(k+2);tot++;if(bad[a]+bad[b]+bad[c]>=2){drop++;continue}out.push(a,b,c)}og.push({start:st,count:out.length-st,materialIndex:g.materialIndex,_whole:g._whole})}
-if(drop){if(tot&&(drop/tot>.35||out.length<tot*3*.1)){CHZ.log.push('clothing '+key+' ('+slot+') refused ('+mode+'): '+Math.round(drop/tot*100)+'% of it lands on the wrong part of the body (head / above the '+(slot=='torso'?'neck':'waist')+')');return null}
-keepIdx=out;keepGroups=og.filter(g=>!g._whole);info+=' | cut '+drop+' of '+tot+' triangles that covered the '+(slot=='torso'?'head':'upper body')}}}
+const badKey=slot=='torso'?/^head/:/^(spine\d*|neck|head|(left|right)(shoulder|arm|forearm|hand.*))$/,bad=new Uint8Array(n),mp=new Float32Array(n*3),yy=new T.Vector3(),M4=mode=='retarget'?bm.bindMatrix:gm.bindMatrix;
+for(let i=0;i<n;i++){yy.set(np[i*3],np[i*3+1],np[i*3+2]).applyMatrix4(M4);mp[i*3]=yy.x;mp[i*3+1]=yy.y;mp[i*3+2]=yy.z;
+if(!guard)continue;let b=0,bw=-1;for(let j=0;j<4;j++)if(wf[i*4+j]>bw){bw=wf[i*4+j];b=ni[i*4+j]}
+if(badKey.test(nk2(bm.skeleton.bones[b].name))){bad[i]=1;continue}if(mode=='retarget'&&topY!==null&&yy.y>topY)bad[i]=1}
+const sp=spikeFn(mp,ix0,hd&&hp?(hd.y-hp.y)*2:0),r=cutTris(ix0,gm.geometry.groups,(a,b,c)=>(guard&&bad[a]+bad[b]+bad[c]>=1)||(sp&&sp(a,b,c)));
+if(r.dr){if(r.tot&&(r.dr/r.tot>.35||r.out.length<r.tot*3*.1)){CHZ.log.push('clothing '+key+' ('+slot+') refused ('+mode+'): '+Math.round(r.dr/r.tot*100)+'% of it lands on the wrong part of the body or is stretched');return null}
+keepIdx=r.out;keepGroups=r.og;info+=' | cut '+r.dr+' of '+r.tot+' triangles (head / spikes)'}}}
 /* a plain geometry (the original may use interleaved attributes) */
 const g2=new T.BufferGeometry();g2.setAttribute('position',new T.BufferAttribute(np,3));g2.setAttribute('skinIndex',new T.BufferAttribute(ni,4));g2.setAttribute('skinWeight',new T.BufferAttribute(wf,4));
 if(na||smooth)g2.setAttribute('normal',new T.BufferAttribute(nn,3));
@@ -935,15 +942,17 @@ else{if(ix){const arr=n>65535?new Uint32Array(ix.count):new Uint16Array(ix.count
 CHZ.log.push('clothing: '+info);return{geo:g2,bones:bm.skeleton.bones.slice(),inv:mI.map(m=>m.clone()),bind:bm.bindMatrix.clone()}}catch(e){CHZ.log.push('clothing error: '+e.message);console.warn('[char] retarget garment',e);return null}}
 
 /* cloth materials: always opaque (an exported BLEND material with a patchy alpha map made whole parts of the pants see-through / ragged), double sided, pushed slightly towards the camera so they win over the skin */
-/* Same lighting treatment the default body gets (see the body material fix): this renderer outputs LINEAR colour, so an sRGB texture comes out almost black unless it is
-   decoded as linear and lightly self-lit, and exported garments (Sketchfab / MetaHuman / Unreal) very often ship metalness 1 which renders pure black with no environment map.
-   Without this every garment that was authored dark or metallic showed up as a black silhouette. Applied to ALL cloth, never per-garment. */
-function clothLight(m){if(m.metalness!==undefined){m.metalness=Math.min(m.metalness,.1);m.metalnessMap=null;m.roughness=Math.max(m.roughness===undefined?1:m.roughness,.7);m.roughnessMap=null}
+/* Same idea as the default body's material fix: this renderer outputs LINEAR colour, so an sRGB texture is decoded as linear, and exported garments very often ship
+   metalness 1 (pure black with no environment map). The garment's OWN colour is kept (many shirts are a grey pattern x a colour factor), the self-light is tinted by that
+   colour instead of white (white made every shirt grey), and the colour tint chosen in the Character tab is applied to the cloth too. Applied to ALL cloth. */
+function clothLight(m,tint){if(!m.userData)m.userData={};if(m.metalness!==undefined){m.metalness=Math.min(m.metalness,.1);m.metalnessMap=null;m.roughness=Math.max(m.roughness===undefined?1:m.roughness,.7);m.roughnessMap=null}
 if(m.envMap)m.envMap=null;
-if(m.map){m.map.encoding=T.LinearEncoding;m.map.needsUpdate=true;if(m.emissive){m.emissive.set(0xffffff);m.emissiveMap=m.map;m.emissiveIntensity=.55}}
-else if(m.emissive&&m.color){m.emissive.copy(m.color);m.emissiveMap=null;m.emissiveIntensity=.55}
-if(m.color&&m.map)m.color.set(0xffffff)}
-function clothMat(m0){const m=m0.clone();m.transparent=false;m.opacity=1;m.alphaTest=0;m.depthWrite=true;m.alphaMap=null;m.polygonOffset=true;m.polygonOffsetFactor=-2;m.polygonOffsetUnits=-2;m.side=T.DoubleSide;m.skinning=true;clothLight(m);m.needsUpdate=true;return m}
+if(m.map&&m.map.encoding!==T.LinearEncoding){m.map.encoding=T.LinearEncoding;m.map.needsUpdate=true}
+if(m.color&&!m.userData.clEnc){m.color.convertLinearToSRGB();m.userData.clEnc=1}
+if(tint&&m.color)m.color=new T.Color(tint);
+if(m.emissive){m.emissive.copy(m.color||new T.Color(0xffffff));m.emissiveMap=m.map||null;m.emissiveIntensity=m.map?.3:.25}}
+/* layer: 0 pants, 1 shirts, 2 jackets / vests - the outer layer is drawn in front, so a shirt hem never flickers through the pants */
+function clothMat(m0,layer,tint){const m=m0.clone();m.transparent=false;m.opacity=1;m.alphaTest=0;m.depthWrite=true;m.alphaMap=null;m.polygonOffset=true;m.polygonOffsetFactor=-2-(layer||0)*2;m.polygonOffsetUnits=-2-(layer||0)*2;m.side=T.DoubleSide;m.skinning=true;clothLight(m,tint);m.needsUpdate=true;return m}
 /* which layer a garment is worn on: jackets / vests / armour sit over shirts */
 function garmentLayer(key,slot){return /vest|armou?r|jacket|coat|hoodie|plate|poncho|cape|cloak|parka/i.test(String(key||''))?2:(slot=='torso'?1:0)}
 /* ---- STATIC (un-rigged) CLOTHING: AUTOMATIC SKIN TRANSFER ----
@@ -959,14 +968,15 @@ const nk2=n=>String(n).replace(/^mixamorig\d*[_:]?/i,'').toLowerCase().replace(/
 const bsi=bm.geometry.attributes.skinIndex,bsw=bm.geometry.attributes.skinWeight;
 const mI=bm.skeleton.boneInverses,mP=mI.map(m=>new T.Vector3().setFromMatrixPosition(m.clone().invert())),P=k=>mb.has(k)?mP[mb.get(k)]:null;
 const hips=P('hips'),neck=P('neck'),lf=P('leftfoot'),rf=P('rightfoot');if(!hips||!neck||!lf||!rf)return false;
+let items=null,s=0,fz=0,pushed=0,total=0,Hm=0;const ck='S|'+key+'|'+bm.geometry.uuid+'|'+JSON.stringify(cfg||{})+'|'+sms.map(x=>x.geometry.uuid).join(',');const hit=STC[ck];if(hit){({items,s,fz,pushed,total,Hm}=hit)}else{
 const okKey=slot=='legs'?/^(hips|(left|right)(upleg|leg|foot|toebase))$/:slot=='feet'?/^(left|right)(foot|toebase|leg)$/:/^(hips|spine\d*|neck|(left|right)(shoulder|arm|forearm))$/;
 const okIdx=new Uint8Array(bm.skeleton.bones.length);bm.skeleton.bones.forEach((x,i)=>{okIdx[i]=okKey.test(nk2(x.name))?1:0});
-const F=bodyField(bm,okIdx);if(F.count<50||!(F.Hm>0))return false;const Hm=F.Hm,v=new T.Vector3(),layer=garmentLayer(key,slot);
+const F=bodyField(bm,okIdx);if(F.count<50||!(F.Hm>0))return false;Hm=F.Hm;const v=new T.Vector3(),layer=garmentLayer(key,slot);
 /* where the garment must sit (all in the mannequin's own space) */
 const footY=(lf.y+rf.y)/2;let top,bot;
 if(slot=='legs'){top=hips.y+.035*Hm;bot=footY}else if(slot=='feet'){top=footY+.05*Hm;bot=F.ymin}else{top=neck.y+.01*Hm;bot=hips.y-.07*Hm}
 const gv=[];let gy0=1e9,gy1=-1e9;sms.forEach(m=>{const pa=m.geometry.attributes.position;for(let i=0;i<pa.count;i++){v.set(pa.getX(i),pa.getY(i),pa.getZ(i)).applyMatrix4(m.matrixWorld);gv.push(v.x,v.y,v.z);if(v.y<gy0)gy0=v.y;if(v.y>gy1)gy1=v.y}});
-const gh=gy1-gy0;if(!(gh>1e-6))return false;const s=(top-bot)/gh*(cfg&&+cfg.scale>0?+cfg.scale:1),N=gv.length/3;
+const gh=gy1-gy0;if(!(gh>1e-6))return false;s=(top-bot)/gh*(cfg&&+cfg.scale>0?+cfg.scale:1);const N=gv.length/3;
 /* x: on the body's midline. y: bottom edge on the slot's bottom line. */
 let gcx=0,gc=0;for(let i=0;i<N;i++){gcx+=gv[i*3];gc++}gcx/=gc;
 const ox=hips.x-gcx*s,oy=bot-gy0*s+(cfg&&+cfg.lift?+cfg.lift*Hm:0);
@@ -974,37 +984,38 @@ const ox=hips.x-gcx*s,oy=bot-gy0*s+(cfg&&+cfg.lift?+cfg.lift*Hm:0);
 const samp=[],stp=Math.max(1,Math.floor(N/900));for(let i=0;i<N;i+=stp)samp.push(i);
 const score=dz=>{let t=0,c=0;for(const i of samp){const x=gv[i*3]*s+ox,y=gv[i*3+1]*s+oy,z=gv[i*3+2]*s+dz,k=F.nearest(x,y,z);if(k<0)continue;const ex=x-F.bx[k*3],ey=y-F.bx[k*3+1],ez=z-F.bx[k*3+2];t+=Math.sqrt(ex*ex+ey*ey+ez*ez);c++}return c?t/c:1e9};
 let z0=hips.z-0,bestS=1e9,bestZ=0;for(let dz=-.14*Hm;dz<=.14*Hm+1e-9;dz+=.02*Hm){const sc=score(hips.z-(gv[1]*0)+dz-gcx*0);if(sc<bestS){bestS=sc;bestZ=dz}}
-let fz=bestZ;bestS=1e9;for(let dz=bestZ-.02*Hm;dz<=bestZ+.02*Hm+1e-9;dz+=.005*Hm){const sc=score(hips.z+dz);if(sc<bestS){bestS=sc;fz=dz}}
+fz=bestZ;bestS=1e9;for(let dz=bestZ-.02*Hm;dz<=bestZ+.02*Hm+1e-9;dz+=.005*Hm){const sc=score(hips.z+dz);if(sc<bestS){bestS=sc;fz=dz}}
 const oz=hips.z+fz+(cfg&&+cfg.fwd?+cfg.fwd*Hm:0);
 /* build the skinned geometry */
-const items=[];let o=0;const off=Hm*.007+layer*Hm*.006,reach=Hm*.06+layer*Hm*.006;let pushed=0,total=0;
+items=[];let o=0;const off=Hm*.007+layer*Hm*.012,reach=Hm*.06+layer*Hm*.012;
 for(const m of sms){const g=m.geometry,pa=g.attributes.position,n=pa.count,np=new Float32Array(n*3),ni=new Uint16Array(n*4),wf=new Float32Array(n*4);
 for(let i=0;i<n;i++){np[i*3]=gv[(o+i)*3]*s+ox;np[i*3+1]=gv[(o+i)*3+1]*s+oy;np[i*3+2]=gv[(o+i)*3+2]*s+oz;
 const c=F.nearest(np[i*3],np[i*3+1],np[i*3+2]);if(c>=0){let S=0;for(let j=0;j<4;j++)S+=ATC(bsw,c,j);for(let j=0;j<4;j++){ni[i*4+j]=ATC(bsi,c,j);wf[i*4+j]=S>0?ATC(bsw,c,j)/S:(j==0?1:0)}}else{wf[i*4]=1;ni[i*4]=mb.get('hips')}}
 o+=n;const idxArr=g.index?Array.from({length:g.index.count},(_,q)=>g.index.getX(q)):null;
-if(layer){const n0=weldNormals(np,idxArr),inf=layer*Hm*.006;for(let i=0;i<n*3;i++)np[i]+=n0[i]*inf}
-pushed+=pushOutOfBody(np,idxArr,F,off,reach);total+=n;
+if(layer){const n0=weldNormals(np,idxArr),inf=layer*Hm*.012;for(let i=0;i<n*3;i++)np[i]+=n0[i]*inf}
+pushed+=pushOutOfBody(np,idxArr,F,off,reach);total+=n;let cutR=null;{const sp=spikeFn(np,g.index,Hm*2);if(sp){cutR=cutTris(g.index,g.groups,sp);if(!cutR.dr)cutR=null}}
 const n1=weldNormals(np,idxArr),bi=new T.Matrix4().copy(bm.bindMatrix).invert(),m3=new T.Matrix3().getNormalMatrix(bi),nn=new Float32Array(n*3),acc=new T.Vector3();
 for(let i=0;i<n;i++){acc.set(n1[i*3],n1[i*3+1],n1[i*3+2]).applyMatrix3(m3).normalize();nn[i*3]=acc.x;nn[i*3+1]=acc.y;nn[i*3+2]=acc.z;acc.set(np[i*3],np[i*3+1],np[i*3+2]).applyMatrix4(bi);np[i*3]=acc.x;np[i*3+1]=acc.y;np[i*3+2]=acc.z}
 const g2=new T.BufferGeometry();g2.setAttribute('position',new T.BufferAttribute(np,3));g2.setAttribute('normal',new T.BufferAttribute(nn,3));g2.setAttribute('skinIndex',new T.BufferAttribute(ni,4));g2.setAttribute('skinWeight',new T.BufferAttribute(wf,4));
 ['uv','uv2'].forEach(nmz=>{const u=g.attributes[nmz];if(u&&u.count===n){const f=new Float32Array(n*2);for(let i=0;i<n;i++){f[i*2]=u.getX(i);f[i*2+1]=u.getY(i)}g2.setAttribute(nmz,new T.BufferAttribute(f,2))}});
-const ix=g.index;if(ix){const arr=n>65535?new Uint32Array(ix.count):new Uint16Array(ix.count);for(let i=0;i<ix.count;i++)arr[i]=ix.getX(i);g2.setIndex(new T.BufferAttribute(arr,1))}
-(g.groups||[]).forEach(q=>g2.addGroup(q.start,q.count,q.materialIndex));g2.computeBoundingSphere();g2.computeBoundingBox();items.push({src:m,geo:g2})}
+const ix=g.index;if(cutR){g2.setIndex(new T.BufferAttribute(n>65535?Uint32Array.from(cutR.out):Uint16Array.from(cutR.out),1));cutR.og.forEach(q=>g2.addGroup(q.start,q.count,q.materialIndex))}else{if(ix){const arr=n>65535?new Uint32Array(ix.count):new Uint16Array(ix.count);for(let i=0;i<ix.count;i++)arr[i]=ix.getX(i);g2.setIndex(new T.BufferAttribute(arr,1))}
+(g.groups||[]).forEach(q=>g2.addGroup(q.start,q.count,q.materialIndex))}g2.computeBoundingSphere();g2.computeBoundingBox();items.push({src:m,geo:g2})}
+STC[ck]={items,s,fz,pushed,total,Hm}}
 const wr=new T.Group();wr.position.copy(bm.position);wr.quaternion.copy(bm.quaternion);wr.scale.copy(bm.scale);
-for(const it of items){const mats=[].concat(it.src.material).map(clothMat);const sm=new T.SkinnedMesh(it.geo,Array.isArray(it.src.material)?mats:mats[0]);sm.frustumCulled=false;sm.name=it.src.name;sm.bind(new T.Skeleton(bm.skeleton.bones.slice(),mI.map(q=>q.clone())),bm.bindMatrix.clone());wr.add(sm)}
+for(const it of items){const LY=garmentLayer(key,slot),mats=[].concat(it.src.material).map(q=>clothMat(q,LY,b.tint));const sm=new T.SkinnedMesh(it.geo,Array.isArray(it.src.material)?mats:mats[0]);sm.frustumCulled=false;sm.renderOrder=LY;sm.name=it.src.name;sm.bind(new T.Skeleton(bm.skeleton.bones.slice(),mI.map(q=>q.clone())),bm.bindMatrix.clone());wr.add(sm)}
 bm.parent.add(wr);b.g.updateMatrixWorld(true);const body=skinBox(mw),H=body.max.y-body.min.y,gbx=skinBox(wr),sz=gbx.getSize(new T.Vector3());
 if(isFinite(sz.y)&&sz.y>H*.05&&body.clone().expandByScalar(H*.15).containsBox(gbx)){(b.accs=b.accs||{})[key||'?']=wr;CHZ.log.push('clothing '+key+' ('+slot+'): no skeleton in the file - fitted to the body and skinned from it (scale '+s.toFixed(3)+', depth shift '+(fz/Hm*100).toFixed(1)+'%, '+pushed+' of '+total+' vertices pushed out of the skin)');console.log('[char] static clothing skinned onto the body ('+key+')');return true}
 bm.parent.remove(wr);CHZ.log.push('clothing '+key+' ('+slot+'): skin transfer result is the wrong size ('+sz.x.toFixed(2)+' x '+sz.y.toFixed(2)+' x '+sz.z.toFixed(2)+')');return false}catch(e){CHZ.log.push('clothing error (static): '+e.message);console.warn('[char] static clothing',e);return false}}
 /* ---- the mannequin's surface, as a searchable field (nearest skin vertex + its normal), used to keep cloth OUT of the body ---- */
-function bodyField(bm,keyOk){const bg=bm.geometry,bpa=bg.attributes.position,bsi=bg.attributes.skinIndex,bsw=bg.attributes.skinWeight,bna=ATF(bg.attributes.normal)?bg.attributes.normal:null,bn=bpa.count,v=new T.Vector3();
+function bodyField(bm,keyOk){const bck=bm.geometry.uuid+'|'+(keyOk?Array.prototype.join.call(keyOk,''):'all');if(BFC[bck])return BFC[bck];const bg=bm.geometry,bpa=bg.attributes.position,bsi=bg.attributes.skinIndex,bsw=bg.attributes.skinWeight,bna=ATF(bg.attributes.normal)?bg.attributes.normal:null,bn=bpa.count,v=new T.Vector3();
 const nm3=new T.Matrix3().getNormalMatrix(bm.bindMatrix),bx=new Float32Array(bn*3),bnr=new Float32Array(bn*3);let ymin=1e9,ymax=-1e9;
 for(let i=0;i<bn;i++){v.set(bpa.getX(i),bpa.getY(i),bpa.getZ(i)).applyMatrix4(bm.bindMatrix);bx[i*3]=v.x;bx[i*3+1]=v.y;bx[i*3+2]=v.z;if(v.y<ymin)ymin=v.y;if(v.y>ymax)ymax=v.y;
 if(bna){v.set(bna.getX(i),bna.getY(i),bna.getZ(i)).applyMatrix3(nm3).normalize();bnr[i*3]=v.x;bnr[i*3+1]=v.y;bnr[i*3+2]=v.z}}
 const Hm=ymax-ymin,cell=Hm/40,grid=new Map(),gk=(x,y,z)=>x+'_'+y+'_'+z,cand=[];
 for(let i=0;i<bn;i++){if(keyOk){let best=0,bw=-1;for(let j=0;j<4;j++){const w=ATC(bsw,i,j);if(w>bw){bw=w;best=ATC(bsi,i,j)}}if(!keyOk[best])continue}
 cand.push(i);const k=gk(Math.floor(bx[i*3]/cell),Math.floor(bx[i*3+1]/cell),Math.floor(bx[i*3+2]/cell));let a=grid.get(k);if(!a)grid.set(k,a=[]);a.push(i)}
-const nearest=(x,y,z)=>{const cx=Math.floor(x/cell),cy=Math.floor(y/cell),cz=Math.floor(z/cell);let best=-1,bd=1e30;for(let r=0;r<=40;r++){for(let dx=-r;dx<=r;dx++)for(let dy=-r;dy<=r;dy++)for(let dz=-r;dz<=r;dz++){if(Math.max(Math.abs(dx),Math.abs(dy),Math.abs(dz))!=r)continue;const a=grid.get(gk(cx+dx,cy+dy,cz+dz));if(!a)continue;for(const i of a){const ex=bx[i*3]-x,ey=bx[i*3+1]-y,ez=bx[i*3+2]-z,d=ex*ex+ey*ey+ez*ez;if(d<bd){bd=d;best=i}}}if(best>=0&&Math.sqrt(bd)<=r*cell)break}return best};
-return{bx,bnr,Hm,ymin,ymax,nearest,count:cand.length,hasN:!!bna}}
+const nearest=(x,y,z)=>{const cx=Math.floor(x/cell),cy=Math.floor(y/cell),cz=Math.floor(z/cell);let best=-1,bd=1e30;for(let r=0;r<=40;r++){for(let dx=-r;dx<=r;dx++)for(let dy=-r;dy<=r;dy++){const eg=Math.abs(dx)==r||Math.abs(dy)==r;for(let dz=-r;dz<=r;dz+=eg?1:(2*r||1)){const a=grid.get(gk(cx+dx,cy+dy,cz+dz));if(!a)continue;for(const i of a){const ex=bx[i*3]-x,ey=bx[i*3+1]-y,ez=bx[i*3+2]-z,d=ex*ex+ey*ey+ez*ez;if(d<bd){bd=d;best=i}}}}if(best>=0&&Math.sqrt(bd)<=r*cell)break}return best};
+return BFC[bck]={bx,bnr,Hm,ymin,ymax,nearest,count:cand.length,hasN:!!bna}}
 /* push cloth vertices (positions in mannequin bind space, modified in place) out of the skin, then smooth the push over the surface so the cloth doesn't get lumpy.
    `off` = how far above the skin it must sit, `reach` = only vertices this close to the skin are touched. Returns how many were pushed. */
 function pushOutOfBody(np,idx,F,off,reach){if(!F.hasN)return 0;const n=np.length/3,base=Float32Array.from(np);let pushed=0;
@@ -1026,9 +1037,10 @@ const nk2=n=>String(n).replace(/^mixamorig\d*[_:]?/i,'').toLowerCase().replace(/
 b.g.updateMatrixWorld(true);root.updateMatrixWorld(true);const body=skinBox(mw),H=body.max.y-body.min.y;if(!(H>.5))return false;const lim=body.clone().expandByScalar(H*.15);
 for(const mode of ['body','retarget']){
 const wr=new T.Group();wr.position.copy(bm.position);wr.quaternion.copy(bm.quaternion);wr.scale.copy(bm.scale);let ok=true;
-for(const gm of gms){const r=retargetGarment(gm,bm,mb,nk2,mode,H,key);if(!r){ok=false;break}
-const mats=[].concat(gm.material).map(clothMat);const geo=r.geo;
-const sm=new T.SkinnedMesh(geo,Array.isArray(gm.material)?mats:mats[0]);sm.frustumCulled=false;sm.name=gm.name;sm.bind(new T.Skeleton(r.bones,r.inv),r.bind);wr.add(sm)}
+for(const gm of gms){const rk='R|'+(key||'?')+'|'+mode+'|'+gm.uuid+'|'+bm.geometry.uuid;let r,hc=RGC[rk];if(hc===undefined){const l0=CHZ.log.length;r=retargetGarment(gm,bm,mb,nk2,mode,H,key);RGC[rk]={geo:r?r.geo:null,log:CHZ.log.slice(l0)}}else{CHZ.log.push(...hc.log);r=hc.geo?{geo:hc.geo,bones:bm.skeleton.bones.slice(),inv:bm.skeleton.boneInverses.map(q=>q.clone()),bind:bm.bindMatrix.clone()}:null}
+if(!r){ok=false;break}
+const LY=garmentLayer(key,accSlot(key,cfg)),mats=[].concat(gm.material).map(q=>clothMat(q,LY,b.tint));const geo=r.geo;
+const sm=new T.SkinnedMesh(geo,Array.isArray(gm.material)?mats:mats[0]);sm.frustumCulled=false;sm.renderOrder=LY;sm.name=gm.name;sm.bind(new T.Skeleton(r.bones,r.inv),r.bind);wr.add(sm)}
 if(!ok||!wr.children.length)continue;
 bm.parent.add(wr);b.g.updateMatrixWorld(true);const gbx=skinBox(wr),sz=gbx.getSize(new T.Vector3());
 if(isFinite(sz.y)&&sz.y>H*.08&&lim.containsBox(gbx)){(b.accs=b.accs||{})[key||'?']=wr;console.log('[char] clothing wrapped on the body ('+(key||'?')+', '+mode+', '+wr.children.length+' mesh)');return true}
@@ -1050,7 +1062,7 @@ const F=fitMeasure(b,mw),slot=accSlot(key,cfg),hb=F.hb,tb=F.tb,hs=hb.getSize(new
 let hasSk=false;root.traverse(x=>{if(x.isSkinnedMesh)hasSk=true});const inner=(hasSk?bakeSkinned(root):root).clone(true);
 /* a rigid prop sits close against the body (sized by proportion, not exact fit), so without this its surface and the body's surface
    z-fight and flicker red/black - same fix already used for wrapped/skinned clothing. */
-inner.traverse(x=>{if(!x.isMesh)return;x.frustumCulled=false;[].concat(x.material).forEach(m=>{if(!m)return;m.transparent=false;m.alphaTest=0;m.depthWrite=true;m.polygonOffset=true;m.polygonOffsetFactor=-2;m.polygonOffsetUnits=-2;m.side=T.DoubleSide;clothLight(m);m.needsUpdate=true})});
+inner.traverse(x=>{if(!x.isMesh)return;x.frustumCulled=false;x.material=Array.isArray(x.material)?x.material.map(q=>q&&q.clone()):(x.material&&x.material.clone());[].concat(x.material).forEach(m=>{if(!m)return;m.transparent=false;m.alphaTest=0;m.depthWrite=true;m.polygonOffset=true;m.polygonOffsetFactor=-2;m.polygonOffsetUnits=-2;m.side=T.DoubleSide;clothLight(m,b.tint);m.needsUpdate=true})});
 const wrap=new T.Group();wrap.add(inner);if(cfg.flip)wrap.rotation.y=Math.PI;wrap.updateMatrixWorld(true);
 const bx=new T.Box3().setFromObject(wrap),sz=bx.getSize(new T.Vector3()),ct=bx.getCenter(new T.Vector3());if(!(sz.x>1e-6&&sz.y>1e-6&&sz.z>1e-6))return;
 const S=Math.max(.2,Math.min(3,+cfg.scale||1)),lift=+cfg.lift||0,fwd=+cfg.fwd||0,mn=(...a)=>Math.min(...a.filter(x=>isFinite(x)&&x>0));
@@ -1077,7 +1089,7 @@ try{b.g.updateMatrixWorld(true);const gx=new T.Box3().setFromObject(hold),bd=ski
 if(!(isFinite(gs.x+gs.y+gs.z)&&gs.y<H*1.3&&gs.x<H*1.3&&bd.clone().expandByScalar(H*.25).containsPoint(gc2))){parent.remove(hold);delete b.accs[key];CHZ.log.push('clothing '+key+' ('+slot+') removed: wrong size/position ('+gs.x.toFixed(2)+' x '+gs.y.toFixed(2)+' x '+gs.z.toFixed(2)+')')}
 else CHZ.log.push('clothing '+key+' ('+slot+') rigid-fit placed: size '+gs.x.toFixed(2)+' x '+gs.y.toFixed(2)+' x '+gs.z.toFixed(2)+' (body height '+H.toFixed(2)+')')}catch(e){CHZ.log.push('clothing '+key+' ('+slot+') rigid-fit: could not measure result ('+e.message+')')}}catch(e){console.warn('[char] accessory',e)}}
 /* outfit + tint: each mannequin gets its OWN copy of the material (the loaded model is shared by every player) */
-function applyLook(b,mw,str){try{const [o,a,t,bd]=String(str||'').split('|'),ou=!b.cbody&&o&&STORE.out.find(x=>x.key==o),tint=/^#[0-9a-f]{6}$/i.test(t||'')?t:'';
+function applyLook(b,mw,str){try{const [o,a,t,bd]=String(str||'').split('|'),ou=!b.cbody&&o&&STORE.out.find(x=>x.key==o),tint=/^#[0-9a-f]{6}$/i.test(t||'')?t:'';b.tint=tint;
 mw.traverse(x=>{if(!x.isMesh||!x.material)return;const arr=Array.isArray(x.material),nm=(arr?x.material:[x.material]).map(m0=>{const m=m0.clone();if(ou&&m.map){m.map=lookTex(ou.url,m.map,x,isTopCloth(ou.key,STORE.cfg['o:'+ou.key]));if(m.emissiveMap)m.emissiveMap=m.map}if(tint)m.color=new T.Color(tint);m.needsUpdate=true;return m});x.material=arr?nm:nm[0]});
 /* accessories: up to 4 at once, keys separated by commas (shirt + pants + hat ...) */
 String(a||'').split(',').filter(Boolean).slice(0,4).forEach(k=>{const ac=STORE.acc.find(x=>x.key==k);if(ac)loadAcc(ac).then(r=>{if(r&&b.mw&&mw.parent)attachAcc(b,mw,r,STORE.cfg['a:'+k]||{},k)})});
