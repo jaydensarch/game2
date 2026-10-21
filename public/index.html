@@ -1356,6 +1356,7 @@ const ADSP=new T.Vector3(),ADSV=new T.Vector3(),ADSQ=new T.Quaternion(),ADSR=new
 function adsVM(z,dt){const e=P.ads*P.ads*(3-2*P.ads),sg=vm.sg||{x:0,y:.03,z:.1,om:[]},lens=sg.lens,pip=!!lens&&z>=1.5,eye=sg.eye||.2,tz=HIP[2]+(-eye-sg.z-HIP[2])*e;
 if(sg.mk){/* the gun rides an animated arm bone, so it sways and tilts. Measure where the sight really is right now, then turn and slide the gun so that point sits dead centre, eye-distance in front of the camera */
 vm.position.set(0,0,0);vm.quaternion.identity();vm.updateMatrixWorld(true);sg.mk.getWorldPosition(ADSP);sg.mk.getWorldQuaternion(ADSQ);
+if(P.ads>.98&&!adsVM.lg){adsVM.lg=1;console.log('[ads v2] sight point in viewmodel space',ADSP.toArray().map(n=>+n.toFixed(3)),'| tilt (deg)',+(2*Math.acos(Math.min(1,Math.abs(ADSQ.w)))*57.3).toFixed(1))}if(P.ads<.2)adsVM.lg=0;
 ADSR.identity().slerp(ADSQ.invert(),e);ADSV.copy(ADSP).applyQuaternion(ADSR);
 vm.quaternion.copy(ADSR);vm.position.set(HIP[0]*(1-e)+(0-ADSV.x)*e,HIP[1]*(1-e)+(0-ADSV.y)*e,HIP[2]*(1-e)+(-eye-ADSV.z)*e)}
 else{vm.position.x=HIP[0]+(-sg.x-HIP[0])*e;vm.position.y=HIP[1]+(-sg.y-HIP[1])*e;vm.position.z+=(tz-vm.position.z)*Math.min(1,dt*15)}
