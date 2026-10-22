@@ -165,7 +165,7 @@ const newSel=new Set(GUNS.map(g=>g[0]));chips($('gsc'),newSel);
 
 async function load(){const r=await post('/api/list',{}),d=await r.json().catch(()=>({}));if(!r.ok){toast('Could not list files: '+(d.error||r.status),'err');return}
  FILES=d;try{const m=await (await fetch('/api/manifest',{cache:'no-store'})).json();THUMB={};(m.skins||[]).forEach(s=>THUMB[s.key||s.name]=s.url);THUMBO={};(m.outfits||[]).forEach(s=>THUMBO[s.key]=s.url);THUMBM={};(m.menu||[]).forEach(s=>THUMBM[s.key]=s.url)}catch(e){}
- try{SKM=await (await post('/api/skinmap',{})).json()||{}}catch(e){SKM={}}try{OPM=await (await post('/api/optmap',{})).json()||{}}catch(e){OPM={}}try{ATM=await (await post('/api/attmap',{})).json()||{}}catch(e){ATM={}}try{STM=await (await post('/api/storemap',{})).json()||{}}catch(e){STM={}}try{GNM=await (await post('/api/gunmap',{})).json()||{}}catch(e){GNM={}}await loadPlayers();drawTabs();render()}
+ try{SKM=await (await post('/api/cfg',{name:'skins',})).json()||{}}catch(e){SKM={}}try{OPM=await (await post('/api/cfg',{name:'optics',})).json()||{}}catch(e){OPM={}}try{ATM=await (await post('/api/cfg',{name:'attachments',})).json()||{}}catch(e){ATM={}}try{STM=await (await post('/api/cfg',{name:'store',})).json()||{}}catch(e){STM={}}try{GNM=await (await post('/api/cfg',{name:'guns',})).json()||{}}catch(e){GNM={}}await loadPlayers();drawTabs();render()}
 $('rf').onclick=()=>load();
 
 function render(){render0();applyFilter()}
@@ -205,7 +205,7 @@ function render0(){const box=$('lib'),rows=FILES.filter(f=>f.path.startsWith(tab
    const sel=new Set(c.guns&&c.guns.length?c.guns:GUNS.map(g=>g[0]));chips(it.querySelector('.gch'),sel,()=>{c.guns=[...sel];$('sv').disabled=false})};
   rows.forEach(f=>{const it=document.createElement('div');it.className='item';it.style.flexWrap='wrap';drawRow(f,it);list.append(it)});box.append(list);
   const bar=document.createElement('div');bar.className='savebar';bar.innerHTML='<button class="pri" id="sv" disabled>Save attachment settings</button><small style="color:var(--mut)">Multipliers: 1.00 = no change, below 1 reduces (less recoil / spread), above 1 increases. Players only see an attachment on the guns ticked under "Works on".</small>';box.append(bar);
-  $('sv').onclick=async()=>{const keep={};rows.forEach(f=>{const k=baseOf(f.path.split('/')[1]);if(ATM[k])keep[k]=ATM[k]});const r=await post('/api/attmap',{map:keep});if(r.ok){toast('Attachment settings saved','ok');$('sv').disabled=true}else toast('Save failed','err')};return}
+  $('sv').onclick=async()=>{const keep={};rows.forEach(f=>{const k=baseOf(f.path.split('/')[1]);if(ATM[k])keep[k]=ATM[k]});const r=await post('/api/cfg',{name:'attachments',map:keep});if(r.ok){toast('Attachment settings saved','ok');$('sv').disabled=true}else toast('Save failed','err')};return}
  if(tab=='optics'){const list=document.createElement('div');list.className='list';
   rows.forEach(f=>{const nm=f.path.split('/')[1],key=baseOf(nm),c=OPM[key]||{},it=document.createElement('div');it.className='item';it.style.flexWrap='wrap';
    it.innerHTML='<div class="ic">'+esc(extOf(nm).slice(1).toUpperCase())+'</div><div class="nm"><b title="'+esc(nm)+'">'+esc(key.replace(/[-_]/g,' '))+'</b><small>'+mb(f.size)+'</small></div><button class="dng">Delete</button>'+
@@ -214,7 +214,7 @@ function render0(){const box=$('lib'),rows=FILES.filter(f=>f.path.startsWith(tab
    it.querySelectorAll('input').forEach(i=>{const k=i.dataset.k,v=it.querySelector('[data-v="'+k+'"]');i.value=D[k];const sh=()=>v.textContent=k=='zoom'?(+i.value)+'x':k=='lift'?(+i.value).toFixed(3):(+i.value).toFixed(1);sh();i.oninput=()=>{sh();OPM[key]=Object.assign({},D,OPM[key]||{},{[k]:+i.value});$('sv').disabled=false}});
    it.querySelector('button').onclick=()=>del(f);list.append(it)});box.append(list);
   const bar=document.createElement('div');bar.className='savebar';bar.innerHTML='<button class="pri" id="sv" disabled>Save optic settings</button><small style="color:var(--mut)">Zoom = how far it magnifies when aiming. Size adjusts how big it is on the gun. It sits on the gun automatically.</small>';box.append(bar);
-  $('sv').onclick=async()=>{const r=await post('/api/optmap',{map:OPM});if(r.ok){toast('Optic settings saved','ok');$('sv').disabled=true}else toast('Save failed','err')};return}
+  $('sv').onclick=async()=>{const r=await post('/api/cfg',{name:'optics',map:OPM});if(r.ok){toast('Optic settings saved','ok');$('sv').disabled=true}else toast('Save failed','err')};return}
  if(tab=='guns'){syncGuns();const list=document.createElement('div');list.className='list';
   const FLD=[['d','Damage',5,150,1,v=>Math.round(v)],['rpm','Fire rate (rounds/min)',30,1200,10,v=>Math.round(v)],['m','Magazine size',1,100,1,v=>Math.round(v)],['sp','Spread (lower = more accurate)',0,.06,.002,v=>(+v).toFixed(3)],['rc','Recoil',0,.06,.002,v=>(+v).toFixed(3)],['l','Gun length',.2,1.2,.02,v=>(+v).toFixed(2)],['zm','Built-in scope zoom (1 = none)',1,8,.5,v=>(+v)+'x']];
   rows.forEach(f=>{const nm=f.path.split('/')[1],key=baseOf(nm),bid=gunId(nm),it=document.createElement('div');it.className='item';it.style.flexWrap='wrap';
@@ -240,7 +240,7 @@ function render0(){const box=$('lib'),rows=FILES.filter(f=>f.path.startsWith(tab
     it.querySelectorAll('input[type=range]').forEach(i=>{const k=i.dataset.k,fm=FLD.find(x=>x[0]==k)[5],v=it.querySelector('[data-v="'+k+'"]');i.value=c[k]!==undefined?c[k]:P[k];v.textContent=fm(i.value);i.oninput=()=>{v.textContent=fm(i.value);cfg()[k]=+i.value;un()}})};
    draw();list.append(it)});box.append(list);
   const bar=document.createElement('div');bar.className='savebar';bar.innerHTML='<button class="pri" id="sv" disabled>Save gun settings</button><small style="color:var(--mut)">Upload any gun model (.glb). A gun whose name is not one of the six built-ins becomes a new gun automatically, with stats guessed from its name. Change them here if you like, then save.</small>';box.append(bar);
-  $('sv').onclick=async()=>{const keep={};rows.forEach(f=>{const k=baseOf(f.path.split('/')[1]);if(GNM[k])keep[k]=GNM[k]});const r=await post('/api/gunmap',{map:keep});if(r.ok){toast('Gun settings saved','ok');$('sv').disabled=true}else toast('Save failed','err')};return}
+  $('sv').onclick=async()=>{const keep={};rows.forEach(f=>{const k=baseOf(f.path.split('/')[1]);if(GNM[k])keep[k]=GNM[k]});const r=await post('/api/cfg',{name:'guns',map:keep});if(r.ok){toast('Gun settings saved','ok');$('sv').disabled=true}else toast('Save failed','err')};return}
  const jsons=new Set(FILES.filter(f=>f.path.startsWith('maps/')&&extOf(f.path)=='.json').map(f=>baseOf(f.path.split('/')[1])));
  const list=document.createElement('div');list.className='list';
  rows.forEach(f=>{const nm=f.path.split('/')[1],e=extOf(nm),it=document.createElement('div');it.className='item';let tag='';
@@ -275,9 +275,9 @@ function renderStore(box){
   list.append(it)});
  box.append(list);
  const bar=document.createElement('div');bar.className='savebar';bar.innerHTML='<button class="pri" id="sv" disabled>Save store settings</button><small style="color:var(--mut)">0 credits = free for everyone. Hidden items disappear from the store (players who already own them keep them).</small>';box.append(bar);
- $('sv').onclick=async()=>{const keep={};rows.forEach(r=>{keep[r.id]=STM[r.id]});const r=await post('/api/storemap',{map:keep});if(r.ok){toast('Store settings saved','ok');$('sv').disabled=true}else toast('Save failed','err')}}
+ $('sv').onclick=async()=>{const keep={};rows.forEach(r=>{keep[r.id]=STM[r.id]});const r=await post('/api/cfg',{name:'store',map:keep});if(r.ok){toast('Store settings saved','ok');$('sv').disabled=true}else toast('Save failed','err')}}
 async function del(f){if(!confirm('Delete '+f.path+'?'))return;const r=await post('/api/delete',{path:f.path});if(r.ok){toast('Deleted '+f.path.split('/')[1],'ok');load()}else toast('Delete failed','err')}
-async function saveSkins(){const r=await post('/api/skinmap',{map:Object.assign({},SKM)});if(r.ok){toast('Skin settings saved','ok');$('sv').disabled=true}else toast('Save failed','err')}
+async function saveSkins(){const r=await post('/api/cfg',{name:'skins',map:Object.assign({},SKM)});if(r.ok){toast('Skin settings saved','ok');$('sv').disabled=true}else toast('Save failed','err')}
 
 const drop=$('drop');drop.onclick=()=>$('fi').click();$('fi').onchange=()=>{start([...$('fi').files]);$('fi').value=''};$('hq').onclick=()=>$('hint').classList.toggle('open');
 const canDrop=()=>!$('app').classList.contains('hide')&&!drop.classList.contains('hide');
@@ -325,11 +325,11 @@ async function start(files){if(!files.length)return;const T0=tab,q=$('queue'),jo
   st.textContent='Uploading…';const err=await putSigned(d.url,f,bar);
   if(err){fail(err);continue}
   bar.style.width='100%';el.classList.add('done');st.textContent='Done';
-  if(fo=='skins'){SKM[baseOf(n)]=[...newSel];try{await post('/api/skinmap',{map:SKM})}catch(e){}}
+  if(fo=='skins'){SKM[baseOf(n)]=[...newSel];try{await post('/api/cfg',{name:'skins',map:SKM})}catch(e){}}
   if(r){if(r.type=='optic')st.textContent='Done → Optics ('+r.why+')';
    else{const k=baseOf(n),old=ATM[k]||{};ATM[k]=Object.assign({},old,{type:r.type,guns:old.guns&&old.guns.length?old.guns:GUNS.map(g=>g[0])});if(r.type=='mag'&&ATM[k].m===undefined)ATM[k].m=1.5;sorted++;st.textContent='Done → '+LABEL[r.type]+' ('+r.why+')'}}
   if(fo=='guns'&&!gunId(n))toast(n+' uploaded as a new gun – open the Guns tab to set its stats.','ok');else toast(n+' uploaded','ok')}
- if(sorted){try{await post('/api/attmap',{map:ATM})}catch(e){}}
+ if(sorted){try{await post('/api/cfg',{name:'attachments',map:ATM})}catch(e){}}
  await load()}
 
 /* ================= Dashboard + Players (manage accounts by player ID) ================= */
