@@ -475,7 +475,9 @@ let KB=JSON.parse(JSON.stringify(KDEF));
 let L={mode:0,pri:0,sec:0,sight:0,muz:0,mag:0,grip:0,skin:0},S={sens:1,fov:75,bots:5,diff:1,vol:.5,ml:1,inv:0,kls:2,tog:0,gps:1.6,rum:1,tc:0,tls:1,rqi:1,am:TOUCHDEV?0:1};
 try{const j=JSON.parse(localStorage.getItem('sz'));if(j){Object.assign(L,j.L);Object.assign(S,j.S);if(j.KB)for(const a in KDEF)if(Array.isArray(j.KB[a]))KB[a]=[j.KB[a][0]||'',j.KB[a][1]||'',j.KB[a][2]===undefined?KDEF[a][2]:(j.KB[a][2]||'')]}}catch(e){}
 L.gsn=L.gsn||{};L.at=L.at||{};
-const save=()=>{try{localStorage.setItem('sz',JSON.stringify({L,S,KB}))}catch(e){}};
+/* uploaded guns only exist once the gun list has loaded, so until then keep the saved choice inside the built-in guns and remember the chosen gun by name */
+const WANTG={p:L.pk,s:L.sk};let GREG=0;if(!(L.pri>=0&&L.pri<PRI.length))L.pri=0;if(!(L.sec>=0&&L.sec<SEC.length))L.sec=0;
+const save=()=>{try{if(GREG){L.pk=PRI[L.pri];L.sk=SEC[L.sec]}localStorage.setItem('sz',JSON.stringify({L,S,KB}))}catch(e){}};
 const O={L,S};
 /* ====================== PLAYER ACCOUNTS + XP ======================
    Login/profile come from /api/account. Kills, assists, deaths and match results are counted here, shown as
@@ -594,7 +596,7 @@ const gcls=n=>{n=String(n).toLowerCase();return /sniper|awp|barrett|scout|dragun
 const gv={},cust=[];gk.forEach((k,i)=>{const gc=(m.gunCfg||{})[k]||{},id=gc.asNew?'':gunId(k);if(!id){if(!gr[i]){bad++;return}cust.push([('x_'+String(k).toLowerCase().replace(/[^a-z0-9]+/g,'_')).slice(0,40),k,gc,i]);return}if(!gr[i]){bad++;return}const ver=+((m.guns[k].match(/[?&]v=(\d+)/)||[])[1]||0);if(!(id in gv)||ver>=gv[id]){gv[id]=ver;MD[id]=gr[i]}});
 /* any other gun that was uploaded becomes a gun of its own (stats come from its class unless set in admin > Guns) */
 cust.sort((a,b)=>a[0]<b[0]?-1:1).forEach(([cid,k,gc,i])=>{const cl=GPRE[gc.cls]?gc.cls:gcls(k),p=GPRE[cl],has=v=>v!==undefined&&v!==null&&v!==''&&isFinite(+v),w={n:String(gc.n||k.replace(/[-_]+/g,' ')).trim().slice(0,24)||cid,d:has(gc.d)?+gc.d:p.d,r:has(gc.rpm)&&+gc.rpm>0?60000/+gc.rpm:p.r,m:has(gc.m)?Math.max(1,Math.round(+gc.m)):p.m,a:gc.a===undefined||gc.a===null?p.a:(gc.a?1:0),sp:has(gc.sp)?+gc.sp:p.sp,rc:has(gc.rc)?+gc.rc:p.rc,l:has(gc.l)&&+gc.l>0?+gc.l:p.l},zm=has(gc.zm)?(+gc.zm>1?+gc.zm:0):(p.zm||0);if(zm)w.zm=zm;WP[cid]=w;CLS[cid]=GCL[cl];MD[cid]=gr[i];const sl=gc.slot=='sec'||gc.slot=='pri'?gc.slot:(cl=='pistol'?'sec':'pri'),ar=sl=='sec'?SEC:PRI;if(!ar.includes(cid))ar.push(cid)});
-if(L.pri>=PRI.length)L.pri=0;if(L.sec>=SEC.length)L.sec=0;SLOTS.splice(0,SLOTS.length,...PRI.concat(SEC).map(k=>[k,WP[k].n+' (gun)']),['char','Character'],...MAPS.map((mm,i)=>['map'+i,mm.n+' (map)']));
+if(WANTG.p&&PRI.includes(WANTG.p))L.pri=PRI.indexOf(WANTG.p);if(WANTG.s&&SEC.includes(WANTG.s))L.sec=SEC.indexOf(WANTG.s);if(!(L.pri>=0&&L.pri<PRI.length))L.pri=0;if(!(L.sec>=0&&L.sec<SEC.length))L.sec=0;GREG=1;SLOTS.splice(0,SLOTS.length,...PRI.concat(SEC).map(k=>[k,WP[k].n+' (gun)']),['char','Character'],...MAPS.map((mm,i)=>['map'+i,mm.n+' (map)']));
 MD.chars=[];cr.forEach(g=>{if(g)MD.chars.push(g);else bad++});
 const ms=[];m.maps.forEach((x,i)=>{if(mr[i])ms.push([x,mr[i]]);else bad++});
 ms.forEach(([x,g])=>{const c=x.cfg||{};MD['map'+MAPS.length]=g;MAPS.push({n:x.name.trim(),sky:c.sky||0x9db4c8,fl:0x777777,wl:0x888888,cr:0x666666,t:c.t||[0,-26],site:c.site||[0,20],host:c.host||[0,20],auto:{t:!c.t,site:!c.site,host:!c.host},b:[]})});
