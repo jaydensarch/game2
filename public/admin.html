@@ -116,7 +116,7 @@ body.dragging::after{content:"Drop files to upload";position:fixed;inset:0;displ
 <script src="https://cdn.jsdelivr.net/npm/three@0.128.0/examples/js/libs/meshopt_decoder.js"></script>
 <script src="https://cdn.jsdelivr.net/npm/three@0.128.0/examples/js/loaders/OBJLoader.js"></script>
 <script>
-const $=i=>document.getElementById(i);let pw='',tab='guns',FILES=[],THUMB={},THUMBO={},THUMBM={},SKM={},OPM={},ATM={},STM={};
+const $=i=>document.getElementById(i);let pw='',tab='guns',FILES=[],THUMB={},THUMBO={},THUMBM={},SKM={},OPM={},ATM={},STM={},GNM={};
 const TABS=[['dash','Dashboard'],['players','Players'],['guns','Guns'],['optics','Optics'],['attachments','Attachments'],['maps','Maps'],['characters','Characters'],['skins','Skins'],['outfits','Outfits'],['accessories','Accessories'],['bodies','Character skins'],['menu','Menu photos'],['store','Store']];
 const EXT={guns:['.glb','.obj'],maps:['.glb','.obj','.json'],characters:['.glb','.obj'],skins:['.png','.jpg','.jpeg','.webp'],optics:['.glb','.obj'],attachments:['.glb','.obj'],outfits:['.png','.jpg','.jpeg','.webp'],accessories:['.glb'],bodies:['.glb'],menu:['.png','.jpg','.jpeg','.webp','.gif'],store:[],dash:[],players:[]};
 const HINT={dash:'Overview of your game: player numbers, top and newest players, and what is in each file library. Use the box below to jump straight to any player by their <b>player ID</b> or username.',players:'Find a player by their <b>player ID</b> (the 8-character code on their profile) or username, then open them to change their <b>level, XP, stats and credits</b>, give or take away store items, reset their password or ban them. Players see the change after they reload the game or finish a match.',attachments:'Upload a <b>muzzle</b> (suppressor, brake…), <b>magazine</b> or <b>grip</b> model (.glb or .obj). The file name becomes its name in the loadout (a name containing "mag" or "grip" is filed under that type automatically). Below, set its <b>type</b>, the <b>stats</b> it changes, which <b>guns</b> it works on, and fine-tune its size and position. Press Save when done. Scopes and sights go in the Optics tab.',optics:'Upload a scope / sight model (.glb or .obj). The file name becomes its name in the loadout. Then set its <b>zoom</b> and <b>size</b> below and press Save. Pick the optic per gun in Loadout → Attachments.',guns:'Name the file after the gun: <b>ak</b>, <b>m4</b>, <b>awp</b>, <b>mp9</b>, <b>gl</b> or <b>de</b> (names like m4a1, glock and deagle also work).',
@@ -131,6 +131,11 @@ const HINT={dash:'Overview of your game: player numbers, top and newest players,
 const GUNS=[['ak','AK-47'],['m4','M4A4'],['awp','AWP'],['mp9','MP9'],['gl','Glock'],['de','Deagle']];
 const gunId=n=>{n=String(n).toLowerCase().replace(/\.[^.]+$/,'');const t=n.split(/[^a-z0-9]+/).filter(Boolean),h=re=>t.some(x=>re.test(x));return h(/^awp/)||/awp|sniper/.test(n)?'awp':h(/^mp-?9/)||/mp9/.test(n)?'mp9':h(/^(gl|glock|g18)/)||/glock/.test(n)?'gl':h(/^(de|deagle|deserteagle)$/)||/deagle|desert.?eagle/.test(n)?'de':h(/^m4/)||/m4a|m4/.test(n)?'m4':h(/^(ak|akm)/)||/ak-?47|kalash/.test(n)?'ak':''};
 const gunName=id=>(GUNS.find(g=>g[0]==id)||[])[1];
+const GPRE={ar:{d:28,rpm:667,m:30,a:1,sp:.018,rc:.01,l:.58,zm:1},smg:{d:17,rpm:923,m:30,a:1,sp:.03,rc:.006,l:.4,zm:1},lmg:{d:30,rpm:750,m:100,a:1,sp:.03,rc:.011,l:.7,zm:1},dmr:{d:55,rpm:240,m:10,a:0,sp:.006,rc:.02,l:.7,zm:2},sniper:{d:115,rpm:46,m:5,a:0,sp:.002,rc:.04,l:.9,zm:3},pistol:{d:22,rpm:429,m:15,a:0,sp:.02,rc:.01,l:.28,zm:1}},GCLS=[['ar','Assault rifle'],['smg','SMG'],['lmg','Machine gun'],['dmr','Marksman rifle'],['sniper','Sniper rifle'],['pistol','Pistol']];
+const gcls=n=>{n=String(n).toLowerCase();return /sniper|awp|barrett|scout|dragunov|svd|kar98|m24|intervention|cheytac|l96|bolt/.test(n)?'sniper':/lmg|m249|negev|minigun|rpk|mg42|mg34|saw|pkm/.test(n)?'lmg':/dmr|mk14|ebr|sks|m14|g28|vss|marksman/.test(n)?'dmr':/smg|mp5|mp7|ump|vector|p90|uzi|mac-?10|bizon|thompson|tmp|kriss|scorpion|pp-?19/.test(n)?'smg':/pistol|glock|usp|p250|deagle|revolver|1911|five-?seven|beretta|colt|makarov|tec-?9|cz-?75|p2000|hk45|magnum|handgun|luger/.test(n)?'pistol':'ar'};
+const BUILTIN=GUNS.length;
+/* every uploaded gun that is not one of the six built-ins is a gun of its own: add it to the "which guns" chips */
+function syncGuns(){GUNS.length=BUILTIN;FILES.filter(f=>f.path.startsWith('guns/')).map(f=>f.path.split('/')[1]).forEach(nm=>{const k=baseOf(nm),c=GNM[k]||{};if(!gunId(nm)||c.asNew){const id=('x_'+k.toLowerCase().replace(/[^a-z0-9]+/g,'_')).slice(0,40);if(!GUNS.some(g=>g[0]==id))GUNS.push([id,(c.n||k.replace(/[-_]+/g,' ')).slice(0,24)])}})}
 const post=(u,o)=>fetch(u,{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify(Object.assign({password:pw},o))});
 const baseOf=n=>n.replace(/\.[^.]+$/,''),extOf=n=>(n.match(/\.[^.]+$/)||[''])[0].toLowerCase();
 const mb=b=>(b/1048576).toFixed(b>10485760?0:1)+' MB';
@@ -155,16 +160,16 @@ function drawTabs(){const T=$('tabs');T.innerHTML='';GROUPS.forEach(([g,ks])=>{c
  ks.forEach(k=>{const n=TABS.find(t=>t[0]==k)[1],c=k=='dash'||k=='store'?'':k=='players'?(PLAYERS?PTOTAL:'–'):FILES.filter(f=>f.path.startsWith(k+'/')).length,d=document.createElement('div');d.className='tab'+(tab==k?' on':'');d.innerHTML='<span>'+n+'</span>'+(c===''?'':'<em>'+c+'</em>');d.onclick=()=>setTab(k);T.append(d)})})}
 function setTab(k){tab=k;drawTabs();$('hint').innerHTML=HINT[k];$('dsm').textContent='Accepted: '+EXT[k].join('  ');$('fi').accept=EXT[k].join(',');$('lt').textContent=TABS.find(t=>t[0]==k)[1];$('fq').value='';$('fq').classList.toggle('hide',k=='dash'||k=='players');$('hint').classList.remove('open');$('hq').classList.toggle('hide',!HINT[k]);$('gsw').classList.toggle('hide',k!='skins');$('drop').classList.toggle('hide',['store','dash','players'].includes(k));render()}
 
-function chips(el,sel,onchange){el.innerHTML='';GUNS.forEach(([id,n])=>{const c=document.createElement('span');c.className='chip'+(sel.has(id)?' on':'');c.textContent=n;c.onclick=()=>{sel.has(id)?sel.delete(id):sel.add(id);c.classList.toggle('on');onchange&&onchange()};el.append(c)})}
+function chips(el,sel,onchange){el.innerHTML='';if(!sel.has('_c'))GUNS.forEach(g=>{if(g[0].slice(0,2)=='x_')sel.add(g[0])});GUNS.forEach(([id,n])=>{const c=document.createElement('span');c.className='chip'+(sel.has(id)?' on':'');c.textContent=n;c.onclick=()=>{sel.has(id)?sel.delete(id):sel.add(id);sel.add('_c');c.classList.toggle('on');onchange&&onchange()};el.append(c)})}
 const newSel=new Set(GUNS.map(g=>g[0]));chips($('gsc'),newSel);
 
 async function load(){const r=await post('/api/list',{}),d=await r.json().catch(()=>({}));if(!r.ok){toast('Could not list files: '+(d.error||r.status),'err');return}
  FILES=d;try{const m=await (await fetch('/api/manifest',{cache:'no-store'})).json();THUMB={};(m.skins||[]).forEach(s=>THUMB[s.key||s.name]=s.url);THUMBO={};(m.outfits||[]).forEach(s=>THUMBO[s.key]=s.url);THUMBM={};(m.menu||[]).forEach(s=>THUMBM[s.key]=s.url)}catch(e){}
- try{SKM=await (await post('/api/skinmap',{})).json()||{}}catch(e){SKM={}}try{OPM=await (await post('/api/optmap',{})).json()||{}}catch(e){OPM={}}try{ATM=await (await post('/api/attmap',{})).json()||{}}catch(e){ATM={}}try{STM=await (await post('/api/storemap',{})).json()||{}}catch(e){STM={}}await loadPlayers();drawTabs();render()}
+ try{SKM=await (await post('/api/skinmap',{})).json()||{}}catch(e){SKM={}}try{OPM=await (await post('/api/optmap',{})).json()||{}}catch(e){OPM={}}try{ATM=await (await post('/api/attmap',{})).json()||{}}catch(e){ATM={}}try{STM=await (await post('/api/storemap',{})).json()||{}}catch(e){STM={}}try{GNM=await (await post('/api/gunmap',{})).json()||{}}catch(e){GNM={}}await loadPlayers();drawTabs();render()}
 $('rf').onclick=()=>load();
 
 function render(){render0();applyFilter()}
-function render0(){const box=$('lib'),rows=FILES.filter(f=>f.path.startsWith(tab+'/'));box.innerHTML='';
+function render0(){const box=$('lib'),rows=FILES.filter(f=>f.path.startsWith(tab+'/'));box.innerHTML='';syncGuns();chips($('gsc'),newSel);
  if(tab=='dash'){renderDash(box);return}
  if(tab=='players'){renderPlayers(box);return}
  if(tab=='store'){renderStore(box);return}
@@ -210,6 +215,32 @@ function render0(){const box=$('lib'),rows=FILES.filter(f=>f.path.startsWith(tab
    it.querySelector('button').onclick=()=>del(f);list.append(it)});box.append(list);
   const bar=document.createElement('div');bar.className='savebar';bar.innerHTML='<button class="pri" id="sv" disabled>Save optic settings</button><small style="color:var(--mut)">Zoom = how far it magnifies when aiming. Size adjusts how big it is on the gun. It sits on the gun automatically.</small>';box.append(bar);
   $('sv').onclick=async()=>{const r=await post('/api/optmap',{map:OPM});if(r.ok){toast('Optic settings saved','ok');$('sv').disabled=true}else toast('Save failed','err')};return}
+ if(tab=='guns'){syncGuns();const list=document.createElement('div');list.className='list';
+  const FLD=[['d','Damage',5,150,1,v=>Math.round(v)],['rpm','Fire rate (rounds/min)',30,1200,10,v=>Math.round(v)],['m','Magazine size',1,100,1,v=>Math.round(v)],['sp','Spread (lower = more accurate)',0,.06,.002,v=>(+v).toFixed(3)],['rc','Recoil',0,.06,.002,v=>(+v).toFixed(3)],['l','Gun length',.2,1.2,.02,v=>(+v).toFixed(2)],['zm','Built-in scope zoom (1 = none)',1,8,.5,v=>(+v)+'x']];
+  rows.forEach(f=>{const nm=f.path.split('/')[1],key=baseOf(nm),bid=gunId(nm),it=document.createElement('div');it.className='item';it.style.flexWrap='wrap';
+   const cfg=()=>GNM[key]||(GNM[key]={}),isNew=()=>!bid||(GNM[key]&&GNM[key].asNew);
+   const draw=()=>{const c=GNM[key]||{},cl=GPRE[c.cls]?c.cls:gcls(key),P=GPRE[cl],nw=isNew();
+    let h='<div class="ic">'+esc(extOf(nm).slice(1).toUpperCase())+'</div><div class="nm"><b title="'+esc(nm)+'">'+esc(nm)+'</b><small>'+mb(f.size)+'</small>'+(nw?'<span class="tag ok">→ own gun: '+esc(c.n||key.replace(/[-_]+/g,' '))+'</span>':'<span class="tag ok">→ '+gunName(bid)+' (replaces the built-in)</span>')+'</div><button class="dng">Delete</button>';
+    if(bid)h+='<label style="flex-basis:100%;font-size:13px;color:var(--mut)"><input type="checkbox" data-asnew '+(nw?'checked':'')+'> Add as a separate gun instead of replacing the '+gunName(bid)+'</label>';
+    if(nw){h+='<div style="flex-basis:100%;display:grid;grid-template-columns:auto 1fr auto;gap:6px 12px;align-items:center;font-size:13px;color:var(--mut)">'+
+     '<span>Name</span><input type="text" data-n maxlength="24" placeholder="'+esc(key.replace(/[-_]+/g,' '))+'" value="'+esc(c.n||'')+'" style="grid-column:2/4">'+
+     '<span>Type</span><select data-cls style="grid-column:2/4">'+GCLS.map(x=>'<option value="'+x[0]+'"'+(x[0]==cl?' selected':'')+'>'+x[1]+'</option>').join('')+'</select>'+
+     '<span>Slot</span><select data-slot style="grid-column:2/4"><option value="pri"'+((c.slot||(cl=='pistol'?'sec':'pri'))=='pri'?' selected':'')+'>Primary</option><option value="sec"'+((c.slot||(cl=='pistol'?'sec':'pri'))=='sec'?' selected':'')+'>Secondary</option></select>'+
+     '<span>Fire mode</span><label style="grid-column:2/4"><input type="checkbox" data-a '+((c.a===undefined?P.a:c.a)?'checked':'')+'> Full-auto (hold to keep firing)</label>'+
+     FLD.map(x=>'<span>'+x[1]+'</span><input type="range" min="'+x[2]+'" max="'+x[3]+'" step="'+x[4]+'" data-k="'+x[0]+'"><b style="color:var(--text)" data-v="'+x[0]+'"></b>').join('')+'</div>';}
+    it.innerHTML=h;it.querySelector('button').onclick=()=>del(f);
+    const as=it.querySelector('[data-asnew]');if(as)as.onchange=()=>{cfg().asNew=as.checked;syncGuns();$('sv').disabled=false;draw()};
+    if(!nw)return;
+    const un=()=>{$('sv').disabled=false};
+    it.querySelector('[data-n]').oninput=e=>{cfg().n=e.target.value.trim();un()};
+    it.querySelector('[data-n]').onchange=()=>{syncGuns();draw()};
+    it.querySelector('[data-cls]').onchange=e=>{const g=cfg();g.cls=e.target.value;['d','rpm','m','a','sp','rc','l','zm','slot'].forEach(k=>delete g[k]);un();draw()};
+    it.querySelector('[data-slot]').onchange=e=>{cfg().slot=e.target.value;un()};
+    it.querySelector('[data-a]').onchange=e=>{cfg().a=e.target.checked?1:0;un()};
+    it.querySelectorAll('input[type=range]').forEach(i=>{const k=i.dataset.k,fm=FLD.find(x=>x[0]==k)[5],v=it.querySelector('[data-v="'+k+'"]');i.value=c[k]!==undefined?c[k]:P[k];v.textContent=fm(i.value);i.oninput=()=>{v.textContent=fm(i.value);cfg()[k]=+i.value;un()}})};
+   draw();list.append(it)});box.append(list);
+  const bar=document.createElement('div');bar.className='savebar';bar.innerHTML='<button class="pri" id="sv" disabled>Save gun settings</button><small style="color:var(--mut)">Upload any gun model (.glb). A gun whose name is not one of the six built-ins becomes a new gun automatically, with stats guessed from its name. Change them here if you like, then save.</small>';box.append(bar);
+  $('sv').onclick=async()=>{const keep={};rows.forEach(f=>{const k=baseOf(f.path.split('/')[1]);if(GNM[k])keep[k]=GNM[k]});const r=await post('/api/gunmap',{map:keep});if(r.ok){toast('Gun settings saved','ok');$('sv').disabled=true}else toast('Save failed','err')};return}
  const jsons=new Set(FILES.filter(f=>f.path.startsWith('maps/')&&extOf(f.path)=='.json').map(f=>baseOf(f.path.split('/')[1])));
  const list=document.createElement('div');list.className='list';
  rows.forEach(f=>{const nm=f.path.split('/')[1],e=extOf(nm),it=document.createElement('div');it.className='item';let tag='';
@@ -297,7 +328,7 @@ async function start(files){if(!files.length)return;const T0=tab,q=$('queue'),jo
   if(fo=='skins'){SKM[baseOf(n)]=[...newSel];try{await post('/api/skinmap',{map:SKM})}catch(e){}}
   if(r){if(r.type=='optic')st.textContent='Done → Optics ('+r.why+')';
    else{const k=baseOf(n),old=ATM[k]||{};ATM[k]=Object.assign({},old,{type:r.type,guns:old.guns&&old.guns.length?old.guns:GUNS.map(g=>g[0])});if(r.type=='mag'&&ATM[k].m===undefined)ATM[k].m=1.5;sorted++;st.textContent='Done → '+LABEL[r.type]+' ('+r.why+')'}}
-  if(fo=='guns'&&!gunId(n))toast(n+' uploaded, but the name isn\'t a known gun – rename it (ak, m4, awp, mp9, gl, de).','err');else toast(n+' uploaded','ok')}
+  if(fo=='guns'&&!gunId(n))toast(n+' uploaded as a new gun – open the Guns tab to set its stats.','ok');else toast(n+' uploaded','ok')}
  if(sorted){try{await post('/api/attmap',{map:ATM})}catch(e){}}
  await load()}
 
