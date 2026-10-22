@@ -1353,18 +1353,25 @@ A.len=l+.3;const R=addAtt(g,a,A);{const mk=new T.Object3D();mk.position.set(R.x,
 function buildVM(){if(vm)vmS.remove(vm);vm=makeGun(P.slot?SEC[L.sec]:PRI[L.pri]);vm.position.set(HIP[0],HIP[1],HIP[2]);vmS.add(vm);if(vm.act)vm.act('draw')}
 /* aim down sights: slide the gun so the sight sits on the centre of the screen, then (for 3x+ optics) switch to a scope view */
 const ADSP=new T.Vector3(),ADSV=new T.Vector3(),ADSQ=new T.Quaternion(),ADSR=new T.Quaternion();
-function adsVM(z,dt){const e=P.ads*P.ads*(3-2*P.ads),sg=vm.sg||{x:0,y:.03,z:.1,om:[]},lens=sg.lens,pip=!!lens&&z>=1.5,eye=sg.eye||.2,tz=HIP[2]+(-eye-sg.z-HIP[2])*e;
-if(sg.mk){/* the gun rides an animated arm bone, so it sways and tilts. Measure where the sight really is right now, then turn and slide the gun so that point sits dead centre, eye-distance in front of the camera */
-vm.position.set(0,0,0);vm.quaternion.identity();vm.updateMatrixWorld(true);sg.mk.getWorldPosition(ADSP);sg.mk.getWorldQuaternion(ADSQ);
-if(P.ads>.98&&!adsVM.lg){adsVM.lg=1;console.log('[ads v2] sight point in viewmodel space',ADSP.toArray().map(n=>+n.toFixed(3)),'| tilt (deg)',+(2*Math.acos(Math.min(1,Math.abs(ADSQ.w)))*57.3).toFixed(1))}if(P.ads<.2)adsVM.lg=0;
-ADSR.identity().slerp(ADSQ.invert(),e);ADSV.copy(ADSP).applyQuaternion(ADSR);
-vm.quaternion.copy(ADSR);vm.position.set(HIP[0]*(1-e)+(0-ADSV.x)*e,HIP[1]*(1-e)+(0-ADSV.y)*e,HIP[2]*(1-e)+(-eye-ADSV.z)*e)}
-else{vm.position.x=HIP[0]+(-sg.x-HIP[0])*e;vm.position.y=HIP[1]+(-sg.y-HIP[1])*e;vm.position.z+=(tz-vm.position.z)*Math.min(1,dt*15)}
+const ADSREST=new T.Vector3();let ADSERR=0;
+function adsVM(z,dt){const e=P.ads*P.ads*(3-2*P.ads),sg=vm.sg||{x:0,y:.03,z:.1,om:[]},lens=sg.lens,pip=!!lens&&z>=1.5,eye=sg.eye||.2;
+/* 1) put the sight dead centre, eye-relief in front of the camera. Done first and on its own so nothing below can stop it from happening.
+   The gun is never rotated: the arm animation only moves the sight by a centimetre or two, so we just measure where it is right now and slide the gun to suit. */
+try{let px=sg.x,py=sg.y,pz=sg.z;
+if(sg.mk&&vm.rig){vm.position.set(0,0,0);vm.quaternion.identity();vm.updateMatrixWorld(true);sg.mk.getWorldPosition(ADSP);
+if(isFinite(ADSP.x+ADSP.y+ADSP.z)&&ADSP.distanceTo(ADSREST.set(sg.x,sg.y,sg.z))<.12){px=ADSP.x;py=ADSP.y;pz=ADSP.z}}
+vm.quaternion.identity();
+vm.position.set(HIP[0]+(-px-HIP[0])*e,HIP[1]+(-py-HIP[1])*e,HIP[2]+(-eye-pz-HIP[2])*e);
+if(P.ads>.98&&!adsVM.lg){adsVM.lg=1;console.log('[ads v3] sight at',[px,py,pz].map(n=>+n.toFixed(3)),'gun pos',vm.position.toArray().map(n=>+n.toFixed(3)))}if(P.ads<.2)adsVM.lg=0}
+catch(err){if(!ADSERR++)console.error('[ads] aim alignment failed',err);vm.quaternion.identity();vm.position.set(HIP[0]+(-sg.x-HIP[0])*e,HIP[1]+(-sg.y-HIP[1])*e,HIP[2]+(-eye-sg.z-HIP[2])*e)}
+/* 2) optics: lens, scope overlay, sight fading. Cosmetic, so an error here is logged but never allowed to break the aim */
+try{
 /* optics with a real lens: the gun stays on screen and you look through the glass. No lens model (e.g. a bare sniper rifle): old full-screen scope view */
 const sc=!pip&&(z>=3||!!sg.sv),so=sc?Math.max(0,Math.min(1,(P.ads-.7)/.25)):0;SCP.style.opacity=so;SCP.style.display=so>0?'block':'none';vm.visible=!(sc&&P.ads>.95);
 SCOPE.on=pip&&P.ads>.5;SCOPE.z=z;if(lens){lens.visible=sg.ret.visible=SCOPE.on}
 const hr=sg.hr,ho=!!sg.holo,o=(sc||pip||ho)?1:1-.8*e;if(hr)hr.material.opacity=.55+.45*e;
 sg.om.forEach(m=>{const u=m.userData;let oo=o,tr;if(ho){const b=u.o0===undefined?1:u.o0;oo=u.glass?Math.max(.08,b*(1-.92*e)):b;tr=oo<.99||!!u.t0}else tr=oo<.99;if(m.transparent!==tr){m.transparent=tr;m.needsUpdate=true}if(u.up)m.depthWrite=ho?!(u.glass||u.ret):true;m.opacity=oo})}
+catch(err){if(!adsVM.oe){adsVM.oe=1;console.warn('[ads] optics update failed',err)}}}
 function mkBot(ally,human){const b={ally,hp:100,alive:0,x:0,z:0,cd:1,lt:0,gt:0,sd:1,tg:0,rt:0,ph:0,g:new T.Group(),ms:[],vs:[]},M=c=>new T.MeshLambertMaterial({color:c}),u=M(ally?0x2f6fdc:0xa83a32),pn=M(ally?0x1f3f80:0x4a2220),sk=M(0xe0b090),dk=M(0x1a1a1a);
 const part=(g,w,h,d,x,y,z,m,hd)=>{const o=new T.Mesh(new T.BoxGeometry(w,h,d),m);o.position.set(x,y,z);o.userData.bot=b;if(hd)o.userData.head=1;g.add(o);(m.visible===false?b.ms:b.vs).push(o);return o};
 const piv=(x,y)=>{const g=new T.Group();g.position.set(x,y,0);b.g.add(g);return g};
@@ -1604,13 +1611,13 @@ P.spray=Math.max(0,P.spray-dt*8);P.cd-=dt;
 if(P.rel>0){P.rel-=dt;if(P.rel<=0){P.rel=0;P.ammo[P.slot]=mxA(P.slot)}}
 if(P.fire&&P.cd<=0&&!P.rel){if(P.ammo[P.slot]>0){fire();if(!w.a)P.fire=0}else reload()}
 const z=Math.max(A.z,w.zm||0),pz=!!(vm&&vm.sg&&vm.sg.lens)&&z>=1.5,tf=P.zoom?S.fov/(pz?1:z):S.fov;cam.fov+=(tf-cam.fov)*Math.min(1,dt*15);cam.updateProjectionMatrix();
-P.ads=(P.ads||0)+((P.zoom?1:0)-(P.ads||0))*Math.min(1,dt*(P.zoom?11:14));animVM(dt);adsVM(z,dt);
+P.ads=(P.ads||0)+((P.zoom?1:0)-(P.ads||0))*Math.min(1,dt*(P.zoom?11:14));if(P.zoom&&P.ads>.995)P.ads=1;else if(!P.zoom&&P.ads<.005)P.ads=0;animVM(dt);adsVM(z,dt);
 cam.position.set(P.x,P.y+1.7,P.z);cam.rotation.set(P.pitch,P.yaw,0)}
 if(P.dead>0){const a=MPO.on?MPO.spec():bots.find(o=>o.ally&&o.alive);if(a)cam.position.set(a.x,(a.y||0)+1.7,a.z);else cam.position.y=.4;cam.rotation.set(0,P.yaw,0)}
 bots.forEach(b=>botTick(b,dt));if(MPO.on)MPO.tick(dt);modeTick(dt);
 if(G.mode==3)P.hp=100;if(P.hp<=0&&!(P.dead>0)&&!G.over){if(MPO.on){MPO.die();P.dead=MPO.rt}else{G.them++;ACC.ev('d');P.dead=G.mode==1?2:1e9}P.hp=0;P.fire=0}
 $('hp').textContent='❤ '+Math.max(0,P.hp|0);$('am').textContent=P.rel?'Reloading…':`${cur().n}  ${P.ammo[P.slot]} / ${mxA(P.slot)}`;$('inf').textContent=G.inf;$('pr').textContent=P.dead>0?'You died — respawning…':G.pr}
-(function loop(){requestAnimationFrame(loop);const dt=Math.min(clock.getDelta(),.05);pollGP(dt);if((running||MPO.on)&&P&&!G.over)tick(dt);TC.sync&&TC.sync(!!(running&&P&&!G.over&&touchOn()));if(scene){ren.autoClear=false;if(SCOPE.on&&running&&vm&&vm.sg&&vm.sg.lens){try{scopePass()}catch(e){SCOPE.on=false;console.warn('scope',e)}}ren.clear();ren.render(scene,cam);if(vm&&vm.visible){vmC.fov=S.fov;vmC.aspect=cam.aspect;vmC.updateProjectionMatrix();ren.clearDepth();ren.render(vmS,vmC)}if(!running||!P||(G&&G.over))SCP.style.display='none'}})();
+(function loop(){requestAnimationFrame(loop);const dt=Math.min(clock.getDelta(),.05);pollGP(dt);if((running||MPO.on)&&P&&!G.over){try{tick(dt)}catch(err){if(!window.__tkErr){window.__tkErr=1;console.error('[tick] error (game kept running):',err)}}}TC.sync&&TC.sync(!!(running&&P&&!G.over&&touchOn()));if(scene){ren.autoClear=false;if(SCOPE.on&&running&&vm&&vm.sg&&vm.sg.lens){try{scopePass()}catch(e){SCOPE.on=false;console.warn('scope',e)}}ren.clear();ren.render(scene,cam);if(vm&&vm.visible){vmC.fov=S.fov;vmC.aspect=cam.aspect;vmC.updateProjectionMatrix();ren.clearDepth();ren.render(vmS,vmC)}if(!running||!P||(G&&G.over))SCP.style.display='none'}})();
 /* ---------- input ---------- */
 const dn=a=>KB[a].some(c=>c&&keys[c])||!!TK[a],has=(a,c)=>!!c&&KB[a].includes(c);
 function look(dt){const v=(S.kls||2)*dt*(P.zoom?.5:1);if(dn('lookL'))P.yaw+=v;if(dn('lookR'))P.yaw-=v;if(dn('lookU'))P.pitch=Math.min(1.5,P.pitch+v);if(dn('lookD'))P.pitch=Math.max(-1.5,P.pitch-v)}
