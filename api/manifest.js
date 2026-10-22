@@ -11,7 +11,7 @@ export async function GET(){
       else if(x.name.toLowerCase().endsWith('.json'))cfg[n]=u;else m.maps.push({key:n,name:n.replace(/[-_]/g,' '),url:u})}
     m.menu.sort((a,b)=>a.key.localeCompare(b.key,undefined,{numeric:true}));
     for(const x of m.maps)if(cfg[x.key]){try{x.cfg=await (await fetch(cfg[x.key])).json()}catch(e){}}
-    for(const [k,f] of [['optics','opticCfg'],['attachments','attCfg'],['skins','skinGuns']]){try{const c=await cfgGet('config/'+k+'.json');if(c)m[f]=c}catch(e){}}
+    for(const [k,f] of [['optics','opticCfg'],['attachments','attCfg'],['skins','skinGuns'],['guns','gunCfg']]){try{const c=await cfgGet('config/'+k+'.json');if(c)m[f]=c}catch(e){}}
     try{const s=await cfgGet('config/store.json');if(s)m.store=s}catch(e){}
   }catch(e){m.error=e.message}
   return Response.json(m,{headers:{'Cache-Control':'no-store'}});
