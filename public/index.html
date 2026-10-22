@@ -1909,8 +1909,8 @@ cen=a=>a.reduce((s,q)=>s.add(q),new T.Vector3()).multiplyScalar(1/a.length);
 const cR=cen(pts(rf,300)),cS=cen(pts(sl,300)),cM=cen(pts(mg,300));
 const f=cS.clone().sub(cR).normalize();let u=cR.clone().sub(cM);u.addScaledVector(f,-u.dot(f));if(u.lengthSq()<1e-9)return F('could not work out which way is up on the rifle');u.normalize();
 const Q=basisQuat(f,u),pr=hr.getWorldPosition(new T.Vector3()),pl=hl.getWorldPosition(new T.Vector3()),hd=pr.distanceTo(pl),gd=g.hp.r.distanceTo(g.hp.l);
-if(!(hd>1e-6&&gd>1e-4))return F('hand/grip distances are zero (hands '+hd+', gun '+gd+')');let k=gd/hd;/* uploaded guns: their grip points can be anywhere, so size the arms from the gun's length compared with the pack's own rifle instead (this is what made the arms stretch) */
-if(g.cust&&g.len){let a0=1e9,a1=-1e9;pts(rf,300).forEach(q=>{const d=q.dot(f);if(d<a0)a0=d;if(d>a1)a1=d});const LR=a1-a0;if(LR>1e-4&&isFinite(LR))k=Math.min(1.6,Math.max(.55,g.len/LR));console.log('[arms] uploaded gun: arm scale',k.toFixed(2))}
+if(!(hd>1e-6&&gd>1e-4))return F('hand/grip distances are zero (hands '+hd+', gun '+gd+')');let k=gd/hd;/* the arms are sized so the hands reach the grip points, but those points come from an automatic guess about the gun model and can be far off, which blew the arms up to many times their size. So the arm scale is held close to what the gun's length compared with the pack's own rifle says it should be */
+{let a0=1e9,a1=-1e9;pts(rf,300).forEach(q=>{const d=q.dot(f);if(d<a0)a0=d;if(d>a1)a1=d});const LR=a1-a0;if(g.len&&LR>1e-4&&isFinite(LR)){const kL=g.len/LR,k0=k;k=Math.min(kL*1.2,Math.max(kL*.8,k));console.log('[arms] scale',k.toFixed(2),'(from grip points '+(+k0).toFixed(2)+', from gun length '+kL.toFixed(2)+')')}}
 const mr=pr.clone().add(pl).multiplyScalar(.5),mgp=g.hp.r.clone().add(g.hp.l).multiplyScalar(.5);
 W.quaternion.copy(Q);W.scale.setScalar(k);W.position.copy(mgp).sub(mr.multiplyScalar(k).applyQuaternion(Q));
 if(![W.position.x,W.position.y,W.position.z,Q.w,k].every(isFinite))return F('rig placement came out as NaN');
