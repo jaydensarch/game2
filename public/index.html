@@ -1038,7 +1038,7 @@ for(let i=0;i<bn;i++){if(keyOk){let best=0,bw=-1;for(let j=0;j<4;j++){const w=AT
 cand.push(i);const k=gk(Math.floor(bx[i*3]/cell),Math.floor(bx[i*3+1]/cell),Math.floor(bx[i*3+2]/cell));let a=grid.get(k);if(!a)grid.set(k,a=[]);a.push(i)}
 let bn0=1e9,bn1=1e9,bn2=1e9,bx0=-1e9,bx1=-1e9,bx2=-1e9;for(const i of cand){const a=bx[i*3],b=bx[i*3+1],c=bx[i*3+2];if(a<bn0)bn0=a;if(a>bx0)bx0=a;if(b<bn1)bn1=b;if(b>bx1)bx1=b;if(c<bn2)bn2=c;if(c>bx2)bx2=c}
 /* a point far outside the body has nothing to snap to: answer at once instead of scanning thousands of empty cells (a mis-sized garment used to freeze the page) */
-const far2=(Hm*.14)*(Hm*.14),RMAX=Math.ceil(.14*Hm/cell),nearest=(x,y,z)=>{const ox=Math.max(bn0-x,0,x-bx0),oy=Math.max(bn1-y,0,y-bx1),oz=Math.max(bn2-z,0,z-bx2);if(ox*ox+oy*oy+oz*oz>far2)return -1;const cx=Math.floor(x/cell),cy=Math.floor(y/cell),cz=Math.floor(z/cell);let best=-1,bd=1e30;for(let r=0;r<=RMAX;r++){for(let dx=-r;dx<=r;dx++)for(let dy=-r;dy<=r;dy++){const eg=Math.abs(dx)==r||Math.abs(dy)==r;for(let dz=-r;dz<=r;dz+=eg?1:(2*r||1)){const a=grid.get(gk(cx+dx,cy+dy,cz+dz));if(!a)continue;for(const i of a){const ex=bx[i*3]-x,ey=bx[i*3+1]-y,ez=bx[i*3+2]-z,d=ex*ex+ey*ey+ez*ez;if(d<bd){bd=d;best=i}}}}if(best>=0&&Math.sqrt(bd)<=r*cell)break}return best};
+const far2=(Hm*.14)*(Hm*.14),RMAX=Math.ceil(.14*Hm/cell),nearest=(x,y,z)=>{const ox=Math.max(bn0-x,0,x-bx0),oy=Math.max(bn1-y,0,y-bx1),oz=Math.max(bn2-z,0,z-bx2);if(ox*ox+oy*oy+oz*oz>far2)return -1;const cx=Math.floor(x/cell),cy=Math.floor(y/cell),cz=Math.floor(z/cell),RM=nearest.capR?Math.min(nearest.capR,RMAX):RMAX;let best=-1,bd=1e30;for(let r=0;r<=RM;r++){for(let dx=-r;dx<=r;dx++)for(let dy=-r;dy<=r;dy++){const eg=Math.abs(dx)==r||Math.abs(dy)==r;for(let dz=-r;dz<=r;dz+=eg?1:(2*r||1)){const a=grid.get(gk(cx+dx,cy+dy,cz+dz));if(!a)continue;for(const i of a){const ex=bx[i*3]-x,ey=bx[i*3+1]-y,ez=bx[i*3+2]-z,d=ex*ex+ey*ey+ez*ez;if(d<bd){bd=d;best=i}}}}if(best>=0&&Math.sqrt(bd)<=r*cell)break}return best};nearest.capR=0;
 return BFC[bck]={bx,bnr,Hm,ymin,ymax,nearest,count:cand.length,hasN:!!bna,cand}}
 /* push cloth vertices (positions in mannequin bind space, modified in place) out of the skin, then smooth the push over the surface so the cloth doesn't get lumpy.
    `off` = how far above the skin it must sit, `reach` = only vertices this close to the skin are touched. Returns how many were pushed. */
@@ -1091,20 +1091,45 @@ return{top:LM.neck.y+(LM.head.y-LM.neck.y)*.5,bot:LM.hips.y-.25*tl,cb:LM.hips.y+
 function neckClamp(P,env,extra,mark){const {LM,neckR}=env,top=LM.neck.y+(LM.head.y-LM.neck.y)*.5,rc=neckR*1.35,n=P.length/3;let c=0;
 for(let i=0;i<n;i++){if(!(P[i*3+1]>top||(extra&&extra[i])))continue;let dx=P[i*3]-LM.neck.x,dz=P[i*3+2]-LM.neck.z;const d=Math.hypot(dx,dz)||1,k=Math.min(1,rc/d);P[i*3]=LM.neck.x+dx*k;P[i*3+1]=Math.min(P[i*3+1],top);P[i*3+2]=LM.neck.z+dz*k;c++;if(mark)mark[i]=1}return c}
 /* ---- the score ---- */
-function fitScoreP(P,ix,env,slot,layer,pre){const {F0,F,LM,Hm}=env,bd=slotBand(env,slot),n=P.length/3,st=Math.max(1,Math.floor(n/1500)),S=[],ds=[];let inside=0,wrong=0,cx=0;
+function fitScoreP(P,ix,env,slot,layer,pre,struct,lite,noFlat){const {F0,F,LM,Hm}=env,bd=slotBand(env,slot),n=P.length/3,st=Math.max(1,Math.floor(n/(lite?600:1500))),S=[],ds=[];let inside=0,wrong=0,cx=0;
 for(let i=0;i<n;i+=st)S.push(i);
 for(const i of S){const x=P[i*3],y=P[i*3+1],z=P[i*3+2],c=F0.nearest(x,y,z);cx+=x;if(c<0){ds.push(Hm);wrong++;continue}const dx=x-F0.bx[c*3],dy=y-F0.bx[c*3+1],dz=z-F0.bx[c*3+2],d=Math.sqrt(dx*dx+dy*dy+dz*dz),dot=dx*F0.bnr[c*3]+dy*F0.bnr[c*3+1]+dz*F0.bnr[c*3+2];ds.push(d);if(dot<-.004*Hm&&d<.03*Hm)inside++;
 if(y>bd.top+.02*Hm||(bd.bot!==null&&y<bd.bot-.02*Hm))wrong++}
 ds.sort((a,b)=>a-b);const p90=ds[Math.floor(ds.length*.9)]/Hm,m=S.length;
 /* coverage: the part of the body this garment is for must have cloth close to it */
-const cands=[];const cl=F.bx;for(let q=0;q<F.cand.length;q+=7){const i=F.cand[q],y=cl[i*3+1];if(y>=bd.cb&&y<=bd.ct&&(slot=='legs'||slot=='feet'||Math.abs(cl[i*3]-LM.hips.x)<.14*Hm))cands.push(i)}
-const gs=S.length>1200?S.filter((_,k)=>k%2==0):S;let cov=0,cn=0;const thr2=(.05*Hm)*(.05*Hm);
-for(let q=0;q<cands.length;q+=Math.max(1,Math.floor(cands.length/500))){const i=cands[q],x=cl[i*3],y=cl[i*3+1],z=cl[i*3+2];let hit=0;for(const g of gs){const dx=P[g*3]-x,dy=P[g*3+1]-y,dz=P[g*3+2]-z;if(dx*dx+dy*dy+dz*dz<thr2){hit=1;break}}cov+=hit;cn++}
+const cands=[];const cl=F.bx;for(let q=0;q<F.cand.length;q+=lite?16:7){const i=F.cand[q],y=cl[i*3+1];if(y>=bd.cb&&y<=bd.ct&&(slot=='legs'||slot=='feet'||Math.abs(cl[i*3]-LM.hips.x)<.14*Hm))cands.push(i)}
+/* SPAN + HOLES. Cover alone can be gamed by a bad alignment: a vest squashed into a ring at
+   the top of the chest still has cloth near the skin wherever the ring touches, so it scored
+   0.3-0.5 and looked broken. Two structural checks close that hole:
+   - SPAN: the fitted garment must reach across a sensible part of the band it belongs in
+     (a top: about half the neck->hips band; pants: most of waist->ankle).
+   - HOLES: inside the garment's own vertical span, every quarter of the band it crosses must
+     actually have cloth near the body (a vest floating in front of the chest with a naked
+     back, or pants with one missing leg, fail here even though their span is right). */
+const ys=S.map(i=>P[i*3+1]).sort((a,b)=>a-b),y3=ys[Math.floor(ys.length*.03)],y97=ys[Math.floor(ys.length*.97)],bandH=bd.ct-bd.cb;
+const spanF=bandH>1e-6?Math.min(1,(y97-y3)/bandH):0,exp=slot=='legs'?.6:slot=='feet'?.3:.5;
+const NS=4,hs2=bandH/NS,sTot=[0,0,0,0],sCov=[0,0,0,0];
+const gs=S.length>(lite?300:1200)?S.filter((_,k)=>k%(lite?3:2)==0):S;let cov=0,cn=0;const thr2=(.05*Hm)*(.05*Hm);
+for(let q=0;q<cands.length;q+=Math.max(1,Math.floor(cands.length/(lite?150:500)))){const i=cands[q],x=cl[i*3],y=cl[i*3+1],z=cl[i*3+2];let hit=0;for(const g of gs){const dx=P[g*3]-x,dy=P[g*3+1]-y,dz=P[g*3+2]-z;if(dx*dx+dy*dy+dz*dz<thr2){hit=1;break}}cov+=hit;cn++;const sl=Math.min(NS-1,Math.max(0,Math.floor((y-bd.cb)/hs2)));sTot[sl]++;sCov[sl]+=hit}
 const cover=cn?cov/cn:0;let sp=0;if(ix){const f=spikeFn(P,ix,(LM.head.y-LM.hips.y)*2);if(f){const T3=Math.floor(ix.count/3),sk=Math.max(1,Math.floor(T3/4000));let bad=0,tot=0;for(let t=0;t<T3;t+=sk){tot++;if(f(ix.getX(t*3),ix.getX(t*3+1),ix.getX(t*3+2)))bad++}sp=tot?bad/tot:0}}
-const parts={float:Math.max(0,p90-(.04+(layer||0)*.03))*12,cover:(1-cover)*2.5,wrong:wrong/m*4,spike:sp*20,inside:pre?0:inside/m*2,asym:Math.abs(cx/m-LM.hips.x)/Hm*4},score=parts.float+parts.cover+parts.wrong+parts.spike+parts.inside+parts.asym;
-return{score,parts,txt:'float '+(p90*100).toFixed(1)+'% cover '+Math.round(cover*100)+'% wrong '+Math.round(wrong/m*100)+'% spikes '+(sp*100).toFixed(1)+'%'}}
+let aSl=0,empty=0;for(let s=0;s<NS;s++){const sB=bd.cb+s*hs2,sT=sB+hs2;if(sT<y3-.02*Hm||sB>y97+.02*Hm||sTot[s]<(lite?2:5))continue;aSl++;if(sCov[s]/sTot[s]<.3)empty++}
+const holes=aSl?empty/aSl:0;
+/* FLAT (torso only): a properly fitted top is TALLER than it is wide at mid-torso. A vest
+   wrapped as a ring / lying flat against the chest has its width or depth pointing UP (the
+   ring's vertical extent IS the vest's shoulder width), so its mid-band width matches or
+   exceeds its height. Measured on the mid band only, so T-pose sleeves don't pollute it. */
+let flat=0;if(slot=='torso'&&!noFlat){const mids=[];for(const i of S){const y=P[i*3+1];if(y>=bd.cb+.25*bandH&&y<=bd.cb+.65*bandH){mids.push(P[i*3]);mids.push(P[i*3+2])}}
+if(mids.length>60&&y97-y3>1e-6){const xs=[],zs=[];for(let q=0;q<mids.length;q+=2){xs.push(mids[q]);zs.push(mids[q+1])}
+xs.sort((a,b)=>a-b);zs.sort((a,b)=>a-b);const wx=xs[Math.floor(xs.length*.95)]-xs[Math.floor(xs.length*.05)],wz=zs[Math.floor(zs.length*.95)]-zs[Math.floor(zs.length*.05)];
+flat=Math.max(0,Math.max(wx,wz)/(y97-y3)-1.05)*6}}
+const parts={float:Math.max(0,p90-(.04+(layer||0)*.03))*12,cover:(1-cover)*2.5,wrong:wrong/m*4,spike:sp*20,inside:pre?0:inside/m*2,asym:Math.abs(cx/m-LM.hips.x)/Hm*4,span:struct===false?0:Math.max(0,exp-spanF)*5,holes:struct===false?0:holes*1.2,flat:struct===false?0:flat},score=parts.float+parts.cover+parts.wrong+parts.spike+parts.inside+parts.asym+parts.span+parts.holes+parts.flat;
+return{score,parts,span:spanF,holes,empty,aSl,flat,txt:'float '+(p90*100).toFixed(1)+'% cover '+Math.round(cover*100)+'% wrong '+Math.round(wrong/m*100)+'% spikes '+(sp*100).toFixed(1)+'%'+(struct===false?'':' span '+Math.round(spanF*100)+'%'+(aSl?' holes '+empty+'/'+aSl:'')+' flat '+Math.round(flat*100)/100)}}
 function geoMP(geo,bm){const pa=geo.attributes.position,n=pa.count,P=new Float32Array(n*3),v=new T.Vector3();for(let i=0;i<n;i++){v.set(pa.getX(i),pa.getY(i),pa.getZ(i)).applyMatrix4(bm.bindMatrix);P[i*3]=v.x;P[i*3+1]=v.y;P[i*3+2]=v.z}return P}
-function itemsScore(items,env,slot,layer){let tw=0,sc=0,parts=null,txt='';for(const it of items){const n=it.geo.attributes.position.count,r=fitScoreP(geoMP(it.geo,env.bm),it.geo.index,env,slot,layer);sc+=r.score*n;tw+=n;if(!parts||n>(parts.n||0)){parts=Object.assign({n},r.parts);txt=r.txt}}return{score:tw?sc/tw:99,txt}}
+function itemsScore(items,env,slot,layer){let tw=0,sc=0,parts=null,txt='';const all=[];for(const it of items){const n=it.geo.attributes.position.count,MP=geoMP(it.geo,env.bm);all.push(MP);const r=fitScoreP(MP,it.geo.index,env,slot,layer,undefined,false,undefined,true);sc+=r.score*n;tw+=n;if(!parts||n>(parts.n||0)){parts=Object.assign({n},r.parts);txt=r.txt}}
+/* span / holes are properties of the WHOLE garment, never of each part: scoring them per part dragged every pouch of a plate carrier down (a pouch spans ~8% of the band = +2 each) and refused whole vests that fit fine */
+let stx='';if(all.length){const n0=all.reduce((a,p)=>a+p.length/3,0),MP=new Float32Array(n0*3);let o=0;for(const p of all){MP.set(p,o);o+=p.length}/* flat is a SEARCH-only signal: it steers the orientation choice, but scoring a final garment with T-pose sleeves not yet re-posed measured its arms as "width" and refused the fit */
+const r2=fitScoreP(MP,null,env,slot,layer,undefined,true,undefined,true);sc+=r2.parts.span+r2.parts.holes;stx=' span '+Math.round(r2.span*100)+'%'+(r2.aSl?' holes '+r2.empty+'/'+r2.aSl:'')}
+return{score:tw?sc/tw:99,txt:txt+stx}}
 /* ---- candidate: rigged garment (bones) ---- */
 function riggedCand(env,gms,key,mode,H){const items=[];const l0=CHZ.log.length;for(const gm of gms){const rk='R|'+key+'|'+mode+'|'+gm.uuid+'|'+env.bm.geometry.uuid;let r,hc=RGC[rk];
 if(hc===undefined){const q0=CHZ.log.length;r=retargetGarment(gm,env.bm,env.mb,env.nk2,mode,H,key,env);cacheSet(RGC,rk,{geo:r?r.geo:null,log:CHZ.log.slice(q0)},10);hc=RGC[rk]}else CHZ.log.push(...hc.log);
@@ -1120,9 +1145,49 @@ if(ang<.35||ang>1.1)continue;/* a real A-pose sleeve hangs 20-60 deg off the man
 for(let i=0;i<n;i++){const dx=P[i*3]-A.x,dy=P[i*3+1]-A.y,dz=P[i*3+2]-A.z,off=(P[i*3]-LM.hips.x)*sg-trunkW;if(off<=0||Math.hypot(dx,dy,dz)>.6*Hm)continue;
 v.set(dx,dy,dz);const pr=v.dot(dc),w=Math.max(0,Math.min(1,off/(.02*Hm)))*Math.max(0,Math.min(1,pr/(.05*Hm)));if(w<=0)continue;q.copy(qi).slerp(qf,w);v.applyQuaternion(q);P[i*3]=A.x+v.x;P[i*3+1]=A.y+v.y;P[i*3+2]=A.z+v.z;moved++}}
 return moved}
-/* ---- candidate: 'wrap' (no bones needed) ---- */
-const ORIS=[['upright',(x,y,z)=>[x,y,z]],['turned 180',(x,y,z)=>[-x,y,-z]],['Z-up',(x,y,z)=>[x,z,-y]],['Z-down',(x,y,z)=>[x,-z,y]],['X-up',(x,y,z)=>[-y,x,z]],['X-down',(x,y,z)=>[y,-x,z]]];
-function icpScale(q,N,env,s0,t0,smin,smax,iters){const F=env.F,st=Math.max(1,Math.floor(N/800));let s=s0,t=t0.slice();
+/* ---- candidate: 'wrap' (no bones needed) ----
+   ORIENTATIONS. A store-bought garment file can be authored in any convention: Y-up facing
+   -z, Z-up (Sketchfab), sideways, upside down - or POSED, e.g. a vest hanging on a display
+   dummy at an arbitrary tilt (no axis-aligned orientation fits that at all). The old set of
+   6 axis flips missed two whole classes: a vest modelled facing sideways was never tried in
+   its true orientation (the aniso stretch just squashed it onto the chest), and a tilted one
+   had nothing to try. So: the axis flips expanded with yaw variants, plus PCA candidates
+   built from the mesh's own principal axes (long axis -> up). Each candidate first gets a
+   CHEAP alignment; only promising ones get the full multi-start refinement. */
+const R9=(a,b,c,d,e,f,g,h,i)=>new Float32Array([a,b,c,d,e,f,g,h,i]);
+const ROTX=t=>R9(1,0,0,0,Math.cos(t),-Math.sin(t),0,Math.sin(t),Math.cos(t)),ROTY=t=>R9(Math.cos(t),0,Math.sin(t),0,1,0,-Math.sin(t),0,Math.cos(t)),ROTZ=t=>R9(Math.cos(t),-Math.sin(t),0,Math.sin(t),Math.cos(t),0,0,0,1);
+const mmul=(A,B)=>{const C=new Float32Array(9);for(let r=0;r<3;r++)for(let c=0;c<3;c++)C[r*3+c]=A[r*3]*B[c]+A[r*3+1]*B[3+c]+A[r*3+2]*B[6+c];return C};
+const Q2=Math.PI/2,ORIS=(()=>{const ZUP=ROTX(-Q2),ZDN=ROTX(Q2),XUP=ROTZ(Q2),XDN=ROTZ(-Q2),yw=(m,t)=>mmul(ROTY(t),m),o=[];
+for(const [nm,base] of [['upright',ROTY(0)],['Z-up',ZUP],['Z-down',ZDN],['X-up',XUP],['X-down',XDN]])for(const [yn,t] of [['',0],[' 90',Q2],[' 180',Math.PI],[' 270',-Q2]])o.push({name:nm+yn,m:yw(base,t)});
+return o})();
+/* PCA candidates: eigenvectors of the vertex cloud's covariance. The longest principal axis
+   becomes up, the mid one width (or depth), with the perpendicular sign fixed so the map is
+   a proper rotation. Covers garments posed at an arbitrary angle (hanging vest on a dummy:
+   after the dummy is stripped the vest itself stays tilted). */
+function pcaOris(gv,N){try{const st=Math.max(1,Math.floor(N/1500));let sx=0,sy=0,sz=0,c=0;
+for(let i=0;i<N;i+=st){sx+=gv[i*3];sy+=gv[i*3+1];sz+=gv[i*3+2];c++}if(!c)return[];sx/=c;sy/=c;sz/=c;
+let xx=0,yy=0,zz=0,xy=0,xz=0,yz=0;
+for(let i=0;i<N;i+=st){const x=gv[i*3]-sx,y=gv[i*3+1]-sy,z=gv[i*3+2]-sz;xx+=x*x;yy+=y*y;zz+=z*z;xy+=x*y;xz+=x*z;yz+=y*z}
+if(!c)return[];const C=[xx/c,xy/c,xz/c,xy/c,yy/c,yz/c,xz/c,yz/c,zz/c];
+const eig=m=>{let v=[.4,.69,.6],n=Math.hypot(.4,.69,.6);v=[v[0]/n,v[1]/n,v[2]/n];
+for(let it=0;it<24;it++){const w=[m[0]*v[0]+m[1]*v[1]+m[2]*v[2],m[3]*v[0]+m[4]*v[1]+m[5]*v[2],m[6]*v[0]+m[7]*v[1]+m[8]*v[2]];n=Math.hypot(w[0],w[1],w[2])||1;v=[w[0]/n,w[1]/n,w[2]/n]}
+const lam=v[0]*(m[0]*v[0]+m[1]*v[1]+m[2]*v[2])+v[1]*(m[3]*v[0]+m[4]*v[1]+m[5]*v[2])+v[2]*(m[6]*v[0]+m[7]*v[1]+m[8]*v[2]);return{l:lam,v}};
+const e1=eig(C),C2=C.slice();for(let r=0;r<3;r++)for(let c=0;c<3;c++)C2[3*r+c]-=e1.l*e1.v[r]*e1.v[c];/* deflate: C2 = C - lam1*v*v^T (flat row-major!) */const e2=eig(C2);
+let e3=[e1.v[1]*e2.v[2]-e1.v[2]*e2.v[1],e1.v[2]*e2.v[0]-e1.v[0]*e2.v[2],e1.v[0]*e2.v[1]-e1.v[1]*e2.v[0]];const n3=Math.hypot(e3[0],e3[1],e3[2])||1;e3=[e3[0]/n3,e3[1]/n3,e3[2]/n3];
+const out=[],mk=(l,m,s,name)=>{/* rows: X=m, Y=l (up), Z=s; det fix keeps it a proper rotation */const M=R9(m[0],m[1],m[2],l[0],l[1],l[2],s[0],s[1],s[2]);
+const det=M[0]*(M[4]*M[8]-M[5]*M[7])-M[1]*(M[3]*M[8]-M[5]*M[6])+M[2]*(M[3]*M[7]-M[4]*M[6]);
+if(det<0){M[0]=-M[0];M[1]=-M[1];M[2]=-M[2]}out.push({name,m:M})};
+/* the principal frame fixes the garment's own axes, but not which way it FACES: mid/short swap
+   = 90 deg, both signs flipped = 180 deg. Enumerate those 4 per mapping (8 total), long axis
+   always UP - an upside-down mapping is never the right answer for a wearable (collar is not
+   the hem) and its ICP crumple used to out-score the true fit. */
+const neg=v=>v.map(q=>-q);
+for(const [m0,s0,nm] of [[e2.v,e3,'PCA fit'],[e3,e2.v,'PCA alt']]){
+mk(e1.v,m0,s0,nm);mk(e1.v,neg(m0),neg(s0),nm+' 180')}
+return out}catch(e){return[]}}
+function icpScale(q,N,env,s0,t0,smin,smax,iters,stN){const F=env.F,st=Math.max(1,Math.floor(N/(stN||800)));let s=s0,t=t0.slice();
+/* cheap scans (small sample target) also get a capped grid search: a badly-placed candidate must cost LESS, not more (its samples mostly miss the field), and ranking does not need correspondences from 15cm+ away */
+const cap=!!F.nearest;if(cap)F.nearest.capR=stN&&stN<=300?3:4;try{
 for(let it=0;it<(iters||22);it++){const pr=[];for(let i=0;i<N;i+=st){const x=q[i*3]*s+t[0],y=q[i*3+1]*s+t[1],z=q[i*3+2]*s+t[2],c=F.nearest(x,y,z);if(c<0)continue;const dx=x-F.bx[c*3],dy=y-F.bx[c*3+1],dz=z-F.bx[c*3+2];pr.push([dx*dx+dy*dy+dz*dz,i,c])}
 if(pr.length<20)break;pr.sort((a,b)=>a[0]-b[0]);const k=Math.max(20,Math.floor(pr.length*.6));let px=0,py=0,pz=0,bx=0,by=0,bz=0;for(let j=0;j<k;j++){const [,i,c]=pr[j];px+=q[i*3];py+=q[i*3+1];pz+=q[i*3+2];bx+=F.bx[c*3];by+=F.bx[c*3+1];bz+=F.bx[c*3+2]}px/=k;py/=k;pz/=k;bx/=k;by/=k;bz/=k;
 let num=0,den=0;for(let j=0;j<k;j++){const [,i,c]=pr[j];const ax=q[i*3]-px,ay=q[i*3+1]-py,az=q[i*3+2]-pz;num+=ax*(F.bx[c*3]-bx)+ay*(F.bx[c*3+1]-by)+az*(F.bx[c*3+2]-bz);den+=ax*ax+ay*ay+az*az}
@@ -1131,11 +1196,11 @@ let sn=den>1e-12?num/den:s;sn=Math.max(smin,Math.min(smax,sn));s=it<5?s*.5+sn*.5
 let cx=0,cy=0,cz=0,cn=0;for(let i=0;i<N;i+=st){cx+=q[i*3];cy+=q[i*3+1];cz+=q[i*3+2];cn++}cx/=cn;cy/=cn;cz/=cn;const wx=cx*s+t[0],wy=cy*s+t[1],wz=cz*s+t[2],Hm=env.Hm;let bestF=1,bestO=1e30;
 for(let k=0;k<=28;k++){const f=.86+k*.01,s2=Math.max(smin,Math.min(smax,s*f)),t2=[wx-s2*cx,wy-s2*cy,wz-s2*cz],ds=[];for(let i=0;i<N;i+=st*2){const x=q[i*3]*s2+t2[0],y=q[i*3+1]*s2+t2[1],z=q[i*3+2]*s2+t2[2],c=F.nearest(x,y,z);if(c<0)continue;const dx=x-F.bx[c*3],dy=y-F.bx[c*3+1],dz=z-F.bx[c*3+2];ds.push(Math.abs(dx*F.bnr[c*3]+dy*F.bnr[c*3+1]+dz*F.bnr[c*3+2]-.007*Hm))}
 if(ds.length<20)continue;ds.sort((a,b)=>a-b);const m=Math.floor(ds.length*.7);let o=0;for(let j=0;j<m;j++)o+=ds[j];o/=m;if(o<bestO-1e-9){bestO=o;bestF=f}}
-const s3=Math.max(smin,Math.min(smax,s*bestF));t=[wx-s3*cx,wy-s3*cy,wz-s3*cz];s=s3;return{s,t}}
+const s3=Math.max(smin,Math.min(smax,s*bestF));t=[wx-s3*cx,wy-s3*cy,wz-s3*cz];s=s3;return{s,t}}finally{if(cap)F.nearest.capR=0}}
 /* Garments (vests / plate carriers especially) are often modelled for a body with different proportions. After the uniform fit, width, height and depth are
    adjusted separately - within -30% / +30% - so the cloth hugs THIS body instead of floating in front of it. */
-function icpAniso(q,N,env,s0,t0){const F=env.F,st=Math.max(1,Math.floor(N/800)),S=[s0,s0,s0],t=t0.slice();
-for(let it=0;it<12;it++){const pr=[];for(let i=0;i<N;i+=st){const x=q[i*3]*S[0]+t[0],y=q[i*3+1]*S[1]+t[1],z=q[i*3+2]*S[2]+t[2],c=F.nearest(x,y,z);if(c<0)continue;const dx=x-F.bx[c*3],dy=y-F.bx[c*3+1],dz=z-F.bx[c*3+2];pr.push([dx*dx+dy*dy+dz*dz,i,c])}
+function icpAniso(q,N,env,s0,t0,iters,stN){const F=env.F,st=Math.max(1,Math.floor(N/(stN||800))),S=[s0,s0,s0],t=t0.slice();
+for(let it=0;it<(iters||12);it++){const pr=[];for(let i=0;i<N;i+=st){const x=q[i*3]*S[0]+t[0],y=q[i*3+1]*S[1]+t[1],z=q[i*3+2]*S[2]+t[2],c=F.nearest(x,y,z);if(c<0)continue;const dx=x-F.bx[c*3],dy=y-F.bx[c*3+1],dz=z-F.bx[c*3+2];pr.push([dx*dx+dy*dy+dz*dz,i,c])}
 if(pr.length<40)return null;pr.sort((a,b)=>a[0]-b[0]);const k=Math.max(30,Math.floor(pr.length*.6)),pm=[0,0,0],bm2=[0,0,0];
 for(let j=0;j<k;j++){const [,i,c]=pr[j];for(let a=0;a<3;a++){pm[a]+=q[i*3+a];bm2[a]+=F.bx[c*3+a]}}for(let a=0;a<3;a++){pm[a]/=k;bm2[a]/=k}
 for(let a=0;a<3;a++){let num=0,den=0;for(let j=0;j<k;j++){const [,i,c]=pr[j],pa=q[i*3+a]-pm[a];num+=pa*(F.bx[c*3+a]-bm2[a]);den+=pa*pa}
@@ -1169,21 +1234,114 @@ for(const m of sms){const pa=m.geometry.attributes.position;for(let i=0;i<pa.cou
 const bd=slotBand(env,slot),top=slot=='legs'?LM.hips.y+.035*Hm:slot=='feet'?(LM.lf.y+LM.rf.y)/2+.05*Hm:LM.neck.y+.01*Hm,bot=slot=='legs'?(LM.lf.y+LM.rf.y)/2:slot=='feet'?F0.ymin:LM.hips.y-.07*Hm,
 cs=cfg&&+cfg.scale>0?+cfg.scale:1;let bx0=0,by0=0,bz0=0,bc=0;for(let q=0;q<F.cand.length;q+=5){const i=F.cand[q],y=F.bx[i*3+1];if(y>=bd.cb&&y<=bd.ct){bx0+=F.bx[i*3];by0+=F.bx[i*3+1];bz0+=F.bx[i*3+2];bc++}}if(!bc)return null;bx0/=bc;bz0/=bc;
 const layer0=garmentLayer(key,slot);let best=null;const q=new Float32Array(N*3);
-for(const [oname,of] of ORIS){let y0=1e9,y1=-1e9,mx=0,mz=0;for(let i=0;i<N;i++){const r=of(gv[i*3],gv[i*3+1],gv[i*3+2]);q[i*3]=r[0];q[i*3+1]=r[1];q[i*3+2]=r[2];if(r[1]<y0)y0=r[1];if(r[1]>y1)y1=r[1];mx+=r[0];mz+=r[2]}mx/=N;mz/=N;const gh=y1-y0;if(!(gh>1e-9))continue;
-const s0=(top-bot)/gh,runStart=(k,anc)=>{const sk=s0*k,tk=[bx0-sk*mx,anc=='b'?bot-sk*y0:top-sk*y1,bz0-sk*mz];return icpScale(q,N,env,sk,tk,s0*.55,s0*1.25,k==1?22:12)},
-evalIc=c=>{const PP=new Float32Array(N*3);for(let i=0;i<N*3;i+=3){PP[i]=q[i]*c.s+c.t[0];PP[i+1]=q[i+1]*c.s+c.t[1];PP[i+2]=q[i+2]*c.s+c.t[2]}if(slot=='torso'&&!shelly)neckClamp(PP,env);return fitScoreP(PP,null,env,slot,garmentLayer(key,slot),1).score};
-/* a shirt starts well from its slot height, but a partial garment (vest, crop top, short jacket) is shorter than the slot, so several starting sizes / anchors are tried and the best kept */
-const ic0=runStart(1,'b'),sc0=evalIc(ic0);let icBest=ic0,icBestSc=sc0;if(sc0>.3&&sc0<1.6)for(const [k,anc] of [[.85,'b'],[.72,'b'],[1,'t'],[.85,'t']]){const c2=runStart(k,anc),sc2=evalIc(c2);if(sc2<icBestSc-.02){icBest=c2;icBestSc=sc2}}
-const ics=icBest===ic0?[ic0]:[ic0,icBest],lf=cfg&&+cfg.lift?+cfg.lift*Hm:0,fw=cfg&&+cfg.fwd?+cfg.fwd*Hm:0,mkP=(S,tt)=>{const P=new Float32Array(N*3);for(let i=0;i<N*3;i+=3){P[i]=q[i]*S[0]+tt[0];P[i+1]=q[i+1]*S[1]+tt[1];P[i+2]=q[i+2]*S[2]+tt[2]}return P},bases=[];
-for(const ic of ics){const s=ic.s*cs,t=ic.t.slice();if(cs!==1){t[0]=bx0-s*mx;t[2]=bz0-s*mz}t[1]+=lf;t[2]+=fw;bases.push([oname,mkP([s,s,s],t),0,ic.s]);
-if(cs===1&&icBestSc<1.6){const an=icpAniso(q,N,env,ic.s,ic.t);if(an){const dv=Math.max(Math.abs(an.S[0]/ic.s-1),Math.abs(an.S[1]/ic.s-1),Math.abs(an.S[2]/ic.s-1));if(dv>.04)bases.push([oname+', stretched to the body '+an.S.map(v=>(v/ic.s).toFixed(2)).join('/'),mkP(an.S,[an.t[0],an.t[1]+lf,an.t[2]+fw]),.05,ic.s])}}}
+/* STAGED ORIENTATION SEARCH. Every candidate first gets a cheap 8-iteration alignment from
+   BOTH anchors; the promising ones get the full multi-start + aniso + sleeve treatment.
+   Early exit once a full fit is good (the common upright case costs exactly one full fit).
+   A mediocre 'upright' result no longer ends the search: a vest modelled sideways used to
+   be squashed onto the chest by the aniso stretch and its 0.3-0.9 score short-circuited
+   the loop before its real orientation was ever tried. */
+const cands=ORIS.concat(pcaOris(gv,N)).map(o=>({name:o.name,m:o.m}));
+const fillQ=m=>{let y0=1e9,y1=-1e9,mx=0,mz=0;for(let i=0;i<N;i++){const x=gv[i*3],y=gv[i*3+1],z=gv[i*3+2],qx=m[0]*x+m[1]*y+m[2]*z,qy=m[3]*x+m[4]*y+m[5]*z,qz=m[6]*x+m[7]*y+m[8]*z;q[i*3]=qx;q[i*3+1]=qy;q[i*3+2]=qz;if(qy<y0)y0=qy;if(qy>y1)y1=qy;mx+=qx;mz+=qz}mx/=N;mz/=N;return{y0,y1,mx,mz,gh:y1-y0}};
+/* lean of the MAPPED (pre-ICP) cloud: an axis mapping that leaves the garment tilted keeps
+   the tilt after fitting (ICP only translates/scales), and the wrapped mass hides it - so the
+   lean must be measured on the mapped cloud itself */
+const cloudTilt=()=>{const St=Math.max(1,Math.floor(N/400)),cn2=Math.ceil(N/St);let mx=0,my=0,mz=0;
+for(let i=0;i<N;i+=St){mx+=q[i*3];my+=q[i*3+1];mz+=q[i*3+2]}mx/=cn2;my/=cn2;mz/=cn2;
+let sxy=0,syz=0,syy=0;for(let i=0;i<N;i+=St){const ax=q[i*3]-mx,ay=q[i*3+1]-my,az=q[i*3+2]-mz;sxy+=ax*ay;syz+=az*ay;syy+=ay*ay}
+return Math.atan2(Math.hypot(sxy,syz),syy||1e-9)};
+const runStart=(g,k,anc,iters,stN)=>{const s0=(top-bot)/g.gh,sk=s0*k,tk=[bx0-sk*g.mx,anc=='b'?bot-sk*g.y0:top-sk*g.y1,bz0-sk*g.mz];return icpScale(q,N,env,sk,tk,s0*.55,s0*1.25,iters,stN)};
+const evalIcS=(S,t,lite)=>{const PP=new Float32Array(N*3);for(let i=0;i<N*3;i+=3){PP[i]=q[i]*S[0]+t[0];PP[i+1]=q[i+1]*S[1]+t[1];PP[i+2]=q[i+2]*S[2]+t[2]}if(slot=='torso'&&!shelly)neckClamp(PP,env);return fitScoreP(PP,null,env,slot,layer0,1,undefined,lite).score};
+const evalIc=(c,lite)=>evalIcS([c.s,c.s,c.s],c.t,lite);
+const lf=cfg&&+cfg.lift?+cfg.lift*Hm:0,fw=cfg&&+cfg.fwd?+cfg.fwd*Hm:0,mkP=(S,tt)=>{const P=new Float32Array(N*3);for(let i=0;i<N*3;i+=3){P[i]=q[i]*S[0]+tt[0];P[i+1]=q[i+1]*S[1]+tt[1];P[i+2]=q[i+2]*S[2]+tt[2]}return P};
 const sleeveGap=PP=>{let sum=0,c=0;for(let i=0;i<PP.length/3;i+=3){const off=Math.abs(PP[i*3]-LM.hips.x)-env.trunkW;if(off<=.012*Hm)continue;const k=F0.nearest(PP[i*3],PP[i*3+1],PP[i*3+2]);if(k<0){sum+=.15*Hm;c++;continue}sum+=Math.hypot(PP[i*3]-F0.bx[k*3],PP[i*3+1]-F0.bx[k*3+1],PP[i*3+2]-F0.bx[k*3+2]);c++}return c>20?sum/c:0};
+let nFull=0;
+/* heavy = the full multi-anchor multi-start treatment (used for 'upright', the common case);
+   light = one 22-iteration bottom-anchored fit (used for refined candidates - their cheap
+   alignment already found the right neighbourhood) */
+const fullFit=(cand,heavy)=>{nFull++;cand._f=1;const g=fillQ(cand.m);if(!(g.gh>1e-9))return;
+cand._tilt=cloudTilt();
+const starts=[runStart(g,1,'b',22,600)],scs=[evalIc(starts[0])];
+if(heavy){/* heavy: the top anchor is only tried when the bottom-anchored fit is mediocre - a
+   full-span garment (shirt, pants) converges 5-10% too big from the top anchor (its score
+   barely notices the size, then the post-fit size guard refuses the whole garment), while a
+   short garment (vest, crop top) anchored at the band BOTTOM sits too low and needs it */
+if(scs[0]>.45){const s0t=runStart(g,1,'t',22,600);starts.push(s0t);scs.push(evalIc(s0t));}
+if(Math.min(scs[0],scs[scs.length-1])>.3&&Math.min(scs[0],scs[scs.length-1])<1.6)for(const [k,anc] of [[.85,'b'],[.72,'b'],[.85,'t']]){const c2=runStart(g,k,anc,12,500),sc2=evalIc(c2);if(sc2<Math.min(scs[0],scs[scs.length-1])-.02){starts.push(c2);scs.push(sc2)}}}
+const bases=[];starts.forEach((ic,si)=>{const s=ic.s*cs,t=ic.t.slice();if(cs!==1){t[0]=bx0-s*g.mx;t[2]=bz0-s*g.mz}t[1]+=lf;t[2]+=fw;bases.push([cand.name,mkP([s,s,s],t),0,ic.s]);
+if(cs===1&&scs[si]<1.6){const an=icpAniso(q,N,env,ic.s,ic.t);if(an){const dv=Math.max(Math.abs(an.S[0]/ic.s-1),Math.abs(an.S[1]/ic.s-1),Math.abs(an.S[2]/ic.s-1));if(dv>.04)bases.push([cand.name+', stretched to the body '+an.S.map(v=>(v/ic.s).toFixed(2)).join('/'),mkP(an.S,[an.t[0],an.t[1]+lf,an.t[2]+fw]),.05,ic.s])}}});
 for(const [bn,BP,prior,bs] of bases){const vars=[[bn,BP]];if(slot=='torso'){const P1=BP.slice();if(sleeveRepose(P1,env)>0)vars.push([bn+', sleeves re-posed',P1])}
 /* use the re-posed sleeves only if they clearly lie closer to the arms */
 let useVar=0;if(vars.length>1){const g0=sleeveGap(vars[0][1]),g1=sleeveGap(vars[1][1]);if(g1<g0*.9)useVar=1}
 const [nm,PP]=vars[useVar];if(slot=='torso'&&!shelly)neckClamp(PP,env);const sc=fitScoreP(PP,null,env,slot,layer0,1);
-/* a sideways / flipped orientation has to beat 'upright' clearly, not just by a hair */sc.score+=prior+(oname=='upright'?0:.3);if(!best||sc.score<best.sc.score)best={oname:nm,P:PP,sc,s:bs}}
-if(best.sc.score<=FIT_GOOD)break}
+/* a sideways / flipped orientation has to beat 'upright' clearly, not just by a hair. PCA
+   candidates get NO bias: they are the data-derived fix for posed/rotated files, and a bias
+   here is what let a crumpled slab (0.26) keep the slot from the true PCA fit (0.22+0.15) */
+/* no orientation priors: the flat/span/holes/float terms + aniso-aware ICP decide - a fixed bias kept locking the slot to whichever class the bias favoured */
+if(!best||sc.score<best.sc.score)best={oname:nm,P:PP,sc,s:bs}}};
+/* the plain upright orientation is full-fitted FIRST, exactly like the old fast path: its cheap
+   score can under-estimate a clean fit (8 vs 22 iterations), and a clean upright garment must
+   never lose to a lucky flipped candidate's trimmed ICP (that handed the real plate carrier to
+   a Z-up candidate once). */
+{const u=cands[0],g=fillQ(u.m);if(g.gh>1e-9){u._geo=g;fullFit(u,true)}}
+/* STAGED CHEAP SCAN after the upright full fit. Each remaining candidate gets a 6-iteration /
+   200-sample alignment (bottom anchor; ICP translates freely, so the anchor only sets the
+   start) and a lite score. The PCA candidates + upright yaws are scanned first - PCA covers
+   every axis convention AND arbitrary pose tilts for any shape with distinct principal
+   moments. The full axis set is only scanned when nothing promising came of those.
+   IMPORTANT: a clean upright fit (<= .3) ends the search here - that keeps the common case at
+   one full fit. A MERELY-GOOD one (0.3-0.55) does not: a Z-up vest fitted "upright" scores a
+   plausible 0.25 (the slab still wraps the chest), so the best cheap non-upright candidate
+   always gets one light full fit to try to beat it. */
+/* the cheap score MUST include the aniso stretch: garments authored for a different body
+   (the plate carrier is 30% too deep) fit WORSE in their true orientation than crumpled
+   wrong-orientation slabs when only uniform scaling is tried - the ranking was noise */
+const cheapScan=(list,stN)=>{for(const cand of list){if(cand._f)continue;const g=fillQ(cand.m);if(!(g.gh>1e-9))continue;cand._geo=g;
+const ic=runStart(g,1,'b',4,stN||200);let cs=evalIc(ic,true);
+if(cs>.35){const an=icpAniso(q,N,env,ic.s,ic.t,6,300);if(an){const a=evalIcS(an.S,an.t,true);if(a<cs)cs=a}}
+cand._cs=cs;cand._tilt=cloudTilt()}};
+/* TIER 1: every axis convention gets a cheap look - together they cover Y-up/Z-up/X-up and all
+   facings exactly, which is how the overwhelming majority of garment files are authored. */
+const axSet=cands.filter(c=>c.name.indexOf('PCA')!==0);
+cheapScan(axSet);
+const upSc=best?best.sc.score:9;
+if(upSc>.3){const pool=axSet.filter(c=>c._cs!==undefined).sort((a,b)=>a._cs-b._cs);
+ /* the cheap 6-iter ranking is noisy (a lucky trimmed ICP flatters junk), so the top THREE get a real 22-iteration fit before anyone is declared the winner */
+ let nR=3;for(const cand of pool){if(cand._f)continue;fullFit(cand,false);if(nFull>=4||--nR<=0)break}}
+/* TIER 2: the PCA candidates - the only fix for files POSED at an arbitrary angle (a vest
+   hanging on a display dummy), where no axis mapping fits. Runs when nothing fit well OR when
+   the winning fit is TILTED: a garment aligned only by an axis convention keeps its pose tilt
+   (a 35-deg hanging vest wears 35 deg sideways), which the score barely notices - but its
+   vertex cloud leans, and the covariance cross-terms measure that lean for ~free. */
+const wname=best?best.oname.split(',')[0]:null,wbase=wname?cands.find(c=>c.name===wname):null,tilt=wbase?wbase._tilt||0:0;
+/* RESIDUAL-TILT POLISH: an axis mapping that leaves a posed garment leaning keeps the lean
+   after fitting (ICP never rotates). The lean angle is IN the covariance cross-terms of the
+   mapped cloud, so the corrective rotation is known in closed form - apply it and refit. */
+if(best&&wbase&&wbase.m&&(tilt>.12||(best.sc.score>.55&&!wname.startsWith('PCA')))){
+const sxy=(()=>{const St=Math.max(1,Math.floor(N/400)),cn2=Math.ceil(N/St);const g=fillQ(wbase.m);let mx=0,my=0,mz=0;for(let i=0;i<N;i+=St){mx+=q[i*3];my+=q[i*3+1];mz+=q[i*3+2]}mx/=cn2;my/=cn2;mz/=cn2;let a=0,b=0,yy=0;for(let i=0;i<N;i+=St){const ax=q[i*3]-mx,ay=q[i*3+1]-my,az=q[i*3+2]-mz;a+=ax*ay;b+=az*ay;yy+=ay*ay}return[Math.atan2(a/cn2,yy/cn2||1e-9),Math.atan2(b/cn2,yy/cn2||1e-9)]})();
+const thZ=sxy[0],thX=sxy[1],corr=(dz,dx)=>mmul(ROTX(dx),mmul(ROTZ(dz),wbase.m));
+/* the covariance angle UNDERESTIMATES the true lean (pouches / straps skew the mass), so sweep
+   multiples of it along the measured lean direction */
+const trials=[];
+for(const k of [1,2,3,4]){for(const [dz,dx,nm] of [[k*thZ,0,'Z'],[0,k*thX,'X'],[k*thZ,k*thX,'ZX']]){
+ if(trials.length>=9)break;
+ const cand={name:'de-leaned '+nm+' ('+wname+')',m:corr(dz,dx)};const g=fillQ(cand.m);if(!(g.gh>1e-9))continue;
+ const ic=runStart(g,1,'b',10,400);let cs=evalIc(ic,true)+.02;
+ if(cs>.35){const an=icpAniso(q,N,env,ic.s,ic.t,8,400);if(an){const a=evalIcS(an.S,an.t,true)+.02;if(a<cs)cs=a}}
+ trials.push({cand,cs})}}
+/* the 10-iteration ranking under-estimates how well a corrected pose can fit (ICP needs its
+   22 iterations to settle the scale), so the top few get a REAL fit before anyone is rejected */
+trials.sort((a,b)=>a.cs-b.cs);
+for(const t of trials.slice(0,3)){if(nFull>=6)break;
+ if(t.cs>best.sc.score+.25)break;/* hopeless even at full strength */
+ const cand=t.cand;const g=fillQ(cand.m);if(!(g.gh>1e-9))continue;
+ /* FULL scoring for the decision (lite sampling distorted it by ~0.1 - the de-lean looked worse than it is) */
+ const ic=runStart(g,1,'b',22,600);let cs=evalIc(ic)+.02;
+ if(cs>.35){const an=icpAniso(q,N,env,ic.s,ic.t,12,600);if(an){const a=evalIcS(an.S,an.t)+.02;if(a<cs)cs=a}}
+ if(cs<best.sc.score-.05)fullFit(cand,false)}}
+/* FINAL FALLBACK: PCA candidates for wild poses the axis set + polish cannot express */
+if(!best||best.sc.score>.55){const pcSet=cands.filter(c=>c.name.indexOf('PCA')===0);
+ cheapScan(pcSet);const pool=pcSet.filter(c=>c._cs!==undefined).sort((a,b)=>a._cs-b._cs);
+ for(const cand of pool){if(cand._f)continue;fullFit(cand,false);if(nFull>=6)break}}
 if(!best)return null;
 /* build the skinned geometry from the winning orientation */
 const items=[];let off=0,pushed=0;const layer=garmentLayer(key,slot),po=Hm*.007+layer*Hm*.012,reach=Hm*.06+layer*Hm*.012,bsi=bm.geometry.attributes.skinIndex,bsw=bm.geometry.attributes.skinWeight,bi=new T.Matrix4().copy(bm.bindMatrix).invert(),m3=new T.Matrix3().getNormalMatrix(bi);
@@ -1214,14 +1372,15 @@ if(!clothing){if(!gms.length)return false;for(const mode of ['body','retarget'])
 else if(gms.length){for(const mode of ['body','retarget']){const c=consider(riggedCand(env,gms,key,mode,H),mode);if(c&&c.score<=FIT_GOOD){good=c;break}}}
 if(clothing&&!good){let sc=null;try{sc=staticCand(env,gms.length?bakeSkinned(root):root,cfg,key,slot)}catch(e){CHZ.log.push('clothing '+key+': wrap fit error '+e.message)}consider(sc)}
 cands.sort((a,c)=>a.score-c.score);const win=cands[0];
-const limit=FIT_MAX+garmentLayer(key,slot)*.5;if(!win||(clothing&&!(win.score<=limit))){CHZ.log.push('clothing '+key+' ('+slot+') NOT worn - no fit was good enough ('+(tried.join(', ')||'no candidate')+', limit '+limit.toFixed(1)+')'+(win?' ['+win.txt+']':''));cands.forEach(c=>c.items.forEach(it=>{if(it.geo&&!RGC_has(it.geo))it.geo.dispose&&it.geo.dispose()}));return false}
+const limit=FIT_MAX+garmentLayer(key,slot)*.5;if(!win||(clothing&&!(win.score<=limit))){/* only clothing has a fit gate to fail: for props (glasses, hats...) this line was pure noise - the rigid fit that follows logs its own outcome */if(clothing)CHZ.log.push('clothing '+key+' ('+slot+') NOT worn - no fit was good enough ('+(tried.join(', ')||'no candidate')+', limit '+limit.toFixed(1)+')'+(win?' ['+win.txt+']':''));cands.forEach(c=>c.items.forEach(it=>{if(it.geo&&!RGC_has(it.geo))it.geo.dispose&&it.geo.dispose()}));return false}
 const line='clothing '+key+' ('+slot+') fitted by '+win.label+' - score '+win.score.toFixed(2)+' ['+win.txt+']'+(tried.length>1?' | tried: '+tried.join(', '):'');CHZ.log.push(line);
 const own=CHZ.log.slice(l0);pick=cacheSet(STC,ck,{items:win.items,log:own},10)}
 const LY=garmentLayer(key,slot),wr=new T.Group();wr.position.copy(bm.position);wr.quaternion.copy(bm.quaternion);wr.scale.copy(bm.scale);
 for(const it of pick.items){const mats=[].concat(it.src.material).map(q=>clothMat(q,LY,b.tint)),sm=new T.SkinnedMesh(it.geo,Array.isArray(it.src.material)?mats:mats[0]);sm.frustumCulled=false;sm.renderOrder=LY;sm.name=it.src.name;sm.userData.accWrap=1;/* tagged: the mannequin must never mistake a worn garment for the body when measuring */sm.bind(new T.Skeleton(bm.skeleton.bones.slice(),bm.skeleton.boneInverses.map(q=>q.clone())),bm.bindMatrix.clone());wr.add(sm)}
 bm.parent.add(wr);b.g.updateMatrixWorld(true);const gbx=skinBox(wr),sz=gbx.getSize(new T.Vector3());
-if(isFinite(sz.y)&&sz.y>H*.08&&lim.containsBox(gbx)){(b.accs=b.accs||{})[key||'?']=wr;wrapClear(b,key||'?',LY);return true}
-bm.parent.remove(wr);CHZ.log.push('clothing '+key+' rejected after fitting: result '+sz.x.toFixed(2)+' x '+sz.y.toFixed(2)+' x '+sz.z.toFixed(2)+' is outside the body (height '+H.toFixed(2)+')');delete STC[ck];return false}catch(e){CHZ.log.push('clothing error: '+e.message);console.warn('[char] wrap clothing',e);return false}}
+if(isFinite(sz.y)&&sz.y>H*.08&&lim.clone().expandByScalar(H*.02).containsBox(gbx)){/* 2% slack: a re-posed sleeve tip may poke 1-2cm past the 15% margin - that is wearable, and rejecting the whole garment for it left shirts invisible */(b.accs=b.accs||{})[key||'?']=wr;wrapClear(b,key||'?',LY);return true}
+bm.parent.remove(wr);{/* keep the numbers: which axis/limit failed is not guessable from the size alone */const d=lim.min.clone(),e2=lim.max.clone();CHZ.log.push('clothing '+key+' rejected after fitting: result '+sz.x.toFixed(2)+' x '+sz.y.toFixed(2)+' x '+sz.z.toFixed(2)+' is outside the body (height '+H.toFixed(2)+', allowed x '+d.x.toFixed(2)+'..'+e2.x.toFixed(2)+' y '+d.y.toFixed(2)+'..'+e2.y.toFixed(2)+', got x '+gbx.min.x.toFixed(2)+'..'+gbx.max.x.toFixed(2)+' y '+gbx.min.y.toFixed(2)+'..'+gbx.max.y.toFixed(2)+')')}
+delete STC[ck];return false}catch(e){CHZ.log.push('clothing error: '+e.message);console.warn('[char] wrap clothing',e);return false}}
 const RGC_has=g=>Object.values(RGC).some(v=>v&&v.geo===g);
 /* layered clothing: each garment is fitted to the BARE body, so a shirt worn under a plate carrier puffs outside the carrier's shell and swallows it (the "vest is in the back" bug).
    All wrapper geometries live in the mannequin's bind space, so after fitting, every higher layer is pushed out of every lower layer - pose-independent, and both attach orders end up correct. */
@@ -1312,7 +1471,7 @@ spin.rotation.y=CHV.ry;try{r.render(sc,c)}catch(e){if(!CHV.rerr){CHV.rerr=1;cons
    with no gun the pose code simply lets both arms hang relaxed.) */
 function chNoGun(b){try{const gh=b.gun;if(gh&&gh.parent)gh.parent.remove(gh);b.gun=null;b.gg=null;[...b.g.children].forEach(c=>{if(c!==b.mw&&c.isGroup&&c.scale.x>1.09&&c.scale.x<1.11)b.g.remove(c)})}catch(e){console.warn('[char] no gun',e)}}
 /* small readout under the preview: which build is running + the model's materials (so a wrong look can be diagnosed from a screenshot) */
-function chDiagText(){try{const b=CHV.b,seen=new Set(),rows=[];if(b&&b.mw)b.mw.traverse(x=>{if(!x.isMesh||!x.material)return;[].concat(x.material).forEach(m=>{if(seen.has(m))return;seen.add(m);rows.push((m.name||'?').slice(0,16)+' '+String(m.type).replace('Material','')+' map:'+(m.map?'yes':'no')+' colour:#'+(m.color?m.color.getHexString():'-')+' emissive:'+(m.emissiveIntensity!==undefined?(+m.emissiveIntensity).toFixed(2):'-')+' metal:'+(m.metalness!==undefined?(+m.metalness).toFixed(1):'-')+(m.transparent?' transparent:'+(+m.opacity).toFixed(1):'')+(m.userData&&m.userData.skinFix?'  <- skin colour fix applied':'')+(m.userData&&m.userData.swapped?'  <- red/blue swapped':''))})});return 'character preview build 17 - worn on default mannequin\nlook: '+lkStr()+'\n'+(rows.length?rows.join('\n'):'(no model loaded)')+(CHZ.log.length?'\n'+CHZ.log.slice(-10).join('\n'):'')}catch(e){return 'diag error: '+e.message}}
+function chDiagText(){try{const b=CHV.b,seen=new Set(),rows=[];if(b&&b.mw)b.mw.traverse(x=>{if(!x.isMesh||!x.material)return;[].concat(x.material).forEach(m=>{if(seen.has(m))return;seen.add(m);rows.push((m.name||'?').slice(0,16)+' '+String(m.type).replace('Material','')+' map:'+(m.map?'yes':'no')+' colour:#'+(m.color?m.color.getHexString():'-')+' emissive:'+(m.emissiveIntensity!==undefined?(+m.emissiveIntensity).toFixed(2):'-')+' metal:'+(m.metalness!==undefined?(+m.metalness).toFixed(1):'-')+(m.transparent?' transparent:'+(+m.opacity).toFixed(1):'')+(m.userData&&m.userData.skinFix?'  <- skin colour fix applied':'')+(m.userData&&m.userData.swapped?'  <- red/blue swapped':''))})});return 'character preview build 18 - worn on default mannequin\nlook: '+lkStr()+'\n'+(rows.length?rows.join('\n'):'(no model loaded)')+(CHZ.log.length?'\n'+CHZ.log.slice(-10).join('\n'):'')}catch(e){return 'diag error: '+e.message}}
 function chDiag(){const d=hh('div','cx-diag');d.textContent=chDiagText();return d}
 /* garments load asynchronously, so the panel re-reads the log shortly after anything is written to it */
 let CDT=0;function chDiagSoon(){if(CDT)return;CDT=setTimeout(()=>{CDT=0;try{const d=document.querySelector('.cx-diag');if(d)d.textContent=chDiagText()}catch(e){}},150)}
