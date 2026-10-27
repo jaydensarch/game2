@@ -564,7 +564,8 @@ return A})();
 
 /* per-gun attachments and skins */
 const GA=gk=>L.at[gk]||(L.at[gk]={sight:0,muz:0,mag:0,grip:0});
-const cOK=(l,gk)=>!l||!l.length||l.includes(gk)||(gk.slice(0,2)=='x_'&&!l.includes('_c')&&!l.some(x=>String(x).slice(0,2)=='x_'));
+/* a list names the guns an item fits. Newly uploaded guns (x_...) were never in lists saved before they existed, so they are allowed unless the admin explicitly switched them off ('!x_name') */
+const cOK=(l,gk)=>!l||!l.length||l.includes(gk)||(gk.slice(0,2)=='x_'&&!l.includes('!'+gk));
 const skinOK=(i,gk)=>{const q=SK[i];return !q[3]||!SKG[q[3]]||cOK(SKG[q[3]],gk)};
 const skinIdx=gk=>{const n=L.gsn[gk];if(!n)return 0;const i=SK.findIndex(x=>x[0]==n);return i>0&&skinOK(i,gk)&&skinOwn(i)?i:0};
 const attOK=(a,gk)=>cOK(a[1].guns,gk);
@@ -630,12 +631,15 @@ const L=sz[ax]||1,lo=[1e9,-1e9],hi=[1e9,-1e9];
 Q.forEach(([a,u])=>{const t=(a-mn[ax])/L;if(t<.15){lo[0]=Math.min(lo[0],u);lo[1]=Math.max(lo[1],u)}if(t>.85){hi[0]=Math.min(hi[0],u);hi[1]=Math.max(hi[1],u)}});
 return{ax,up,s:(lo[1]-lo[0])<(hi[1]-hi[0])?-1:1}}
 /* give every gun mesh its own side-projected UVs so any skin image wraps the gun cleanly, whatever the model's own UV layout is */
-function bakeUV(o,I,bb){o.updateMatrixWorld(true);const v=new T.Vector3(),n=new T.Vector3(),wd=3-I.ax-I.up,mn=[bb.min.x,bb.min.y,bb.min.z],mx=[bb.max.x,bb.max.y,bb.max.z],LA=Math.max(1e-4,mx[I.ax]-mn[I.ax]),LU=Math.max(1e-4,mx[I.up]-mn[I.up]),LD=Math.max(1e-4,mx[wd]-mn[wd]);
+function bakeUV(o,I,bb,asp){o.updateMatrixWorld(true);const v=new T.Vector3(),n=new T.Vector3(),wd=3-I.ax-I.up,mn=[bb.min.x,bb.min.y,bb.min.z],mx=[bb.max.x,bb.max.y,bb.max.z],LA=Math.max(1e-4,mx[I.ax]-mn[I.ax]),LU=Math.max(1e-4,mx[I.up]-mn[I.up]),LD=Math.max(1e-4,mx[wd]-mn[wd]);
+/* ART skin (a wide picture drawn for the side of a gun): stretch it over the side view once.
+   PATTERN skin (camo, square tiles): repeat it at ONE scale on every axis so it is never squashed or stretched. */
+const art=asp>=1.8,TL=LA/2.5,sA=art?LA:TL,sU=art?LU:TL,sD=art?LD:TL;
 o.traverse(x=>{if(!x.isMesh||!x.geometry||!x.geometry.attributes.position)return;const g=x.geometry=x.geometry.clone();if(!g.attributes.normal)g.computeVertexNormals();
 const p=g.attributes.position,nr=g.attributes.normal,uv=new Float32Array(p.count*2),nm=new T.Matrix3().getNormalMatrix(x.matrixWorld);
 for(let i=0;i<p.count;i++){v.fromBufferAttribute(p,i).applyMatrix4(x.matrixWorld);n.fromBufferAttribute(nr,i).applyMatrix3(nm).normalize();
 const a=I.s>0?v.getComponent(I.ax)-mn[I.ax]:mx[I.ax]-v.getComponent(I.ax),u=v.getComponent(I.up)-mn[I.up],d=v.getComponent(wd)-mn[wd],na=Math.abs(n.getComponent(I.ax)),nu=Math.abs(n.getComponent(I.up)),nw=Math.abs(n.getComponent(wd));
-let U,V;if(nw>=na&&nw>=nu){U=a/LA;V=u/LU}else if(nu>=na){U=a/LA;V=d/LD}else{U=d/LD;V=u/LU}uv[i*2]=U;uv[i*2+1]=V}
+let U,V;if(nw>=na&&nw>=nu){U=a/sA;V=u/sU}else if(nu>=na){U=a/sA;V=d/sD}else{U=d/sD;V=u/sU}uv[i*2]=U;uv[i*2+1]=V}
 g.setAttribute('uv',new T.BufferAttribute(uv,2))})}
 /* where on a gun model the optic / muzzle / magazine / grip belong (model space) */
 function gunAnchors(o,I,bb){const mn=[bb.min.x,bb.min.y,bb.min.z],mx=[bb.max.x,bb.max.y,bb.max.z],wd=3-I.ax-I.up,Q=[],v=new T.Vector3();o.updateMatrixWorld(true);
@@ -704,11 +708,11 @@ const g=x.geometry,pa=g.attributes&&g.attributes.position;if(x.isSkinnedMesh&&x.
 if(!g.boundingBox)g.computeBoundingBox();t.copy(g.boundingBox);t.applyMatrix4(x.isSkinnedMesh&&x.bindMatrix?x.bindMatrix:x.matrixWorld);bb.union(t)});const r=bb.isEmpty()?new T.Box3().setFromObject(o):bb;if(src&&sk)SKBX.set(src,r.clone());return r}
 function fitModel(src,size,gun,gk){const o=(!gun&&T.SkeletonUtils?T.SkeletonUtils.clone(src):src.clone(true)),w=new T.Group(),si=gun?skinIdx(gk):0,q=SK[si],img=!!(gun&&si&&q[2]);let AN=null,k,c2=new T.Vector3();
 if(gun){const R=gunOrient(o),qg=new T.Group();qg.quaternion.copy(R);qg.add(o);qg.updateMatrixWorld(true);const bb=new T.Box3().setFromObject(qg),z=bb.getSize(new T.Vector3());k=size/Math.max(z.x,z.y,z.z);const I={ax:2,up:1,s:-1};
-if(img)bakeUV(qg,I,bb);AN=gunAnchors(qg,I,bb);bb.getCenter(c2);qg.position.copy(c2).negate();w.add(qg);w.position.set(0,0,-size/2+.05);w.scale.setScalar(k);w.updateMatrixWorld(true);const an={};for(const k2 in AN)an[k2]=AN[k2].clone().sub(c2).applyMatrix4(w.matrix);w.userData.anch=an}
+if(img){const ti=texP(q[2]).image,asp=ti&&(ti.width||ti.naturalWidth)?(ti.width||ti.naturalWidth)/(ti.height||ti.naturalHeight||1):1;bakeUV(qg,I,bb,asp)}AN=gunAnchors(qg,I,bb);bb.getCenter(c2);qg.position.copy(c2).negate();w.add(qg);w.position.set(0,0,-size/2+.05);w.scale.setScalar(k);w.updateMatrixWorld(true);const an={};for(const k2 in AN)an[k2]=AN[k2].clone().sub(c2).applyMatrix4(w.matrix);w.userData.anch=an}
 else{const bb=skinBox(o,src),z=new T.Vector3(),c=bb.getCenter(new T.Vector3());bb.getSize(z);k=size/z.y;o.position.set(-c.x,-bb.min.y,-c.z);w.add(o);w.scale.setScalar(k);try{w.updateMatrixWorld(true);let pb=skinBox(w),h=pb.max.y-pb.min.y;if(isFinite(h)&&h>1e-6&&Math.abs(h-size)>size*.1){w.scale.multiplyScalar(size/h);w.updateMatrixWorld(true);pb=skinBox(w);h=pb.max.y-pb.min.y;w.position.y-=pb.min.y}w.userData.hgt=h;/* place the body by what is actually drawn: measure, nudge by one unit to learn how the drawn position responds, then move it so the feet are on the floor and the body is centred */
 for(let pass=0;pass<2;pass++){const ax=['x','y','z'],m0=skinBox(w),tg=[(m0.min.x+m0.max.x)/2,m0.min.y,(m0.min.z+m0.max.z)/2];const cur=[tg[0],tg[1],tg[2]];ax.forEach((A,i)=>{w.position[A]+=1;w.updateMatrixWorld(true);const m1=skinBox(w),c1=[(m1.min.x+m1.max.x)/2,m1.min.y,(m1.min.z+m1.max.z)/2][i];w.position[A]-=1;const sl=c1-cur[i];if(isFinite(sl)&&Math.abs(sl)>.05)w.position[A]-=cur[i]/sl});w.updateMatrixWorld(true)}const fb=skinBox(w);console.log('[char] mannequin height in game units:',h.toFixed(2),'| placed: feet y',fb.min.y.toFixed(2),'centre x',((fb.min.x+fb.max.x)/2).toFixed(2),'z',((fb.min.z+fb.max.z)/2).toFixed(2))}catch(e){console.warn('[char] could not measure model',e)}}
 o.traverse(x=>{if(!x.isMesh||!x.material)return;
-if(img){const mt=()=>new T.MeshLambertMaterial({map:texP(q[2]),side:T.DoubleSide});x.material=Array.isArray(x.material)?x.material.map(mt):mt();return}
+if(img){/* one shared material; the picture also lights itself a little so it keeps its colours in dark rooms instead of going muddy */const tx=texP(q[2]);tx.anisotropy=4;if(!fitModel.sm||fitModel.sm.map!==tx){fitModel.sm=new T.MeshLambertMaterial({map:tx,side:T.DoubleSide,emissive:0xffffff,emissiveMap:tx,emissiveIntensity:.3})}const mt=()=>fitModel.sm;x.material=Array.isArray(x.material)?x.material.map(mt):mt();return}
 const fix=m=>{m=m.clone();if(!gun){m.side=T.DoubleSide;m.skinning=true;/* this renderer outputs linear colour, so an sRGB-decoded texture comes out almost black: decode it as linear and let the texture light itself a little so the character never disappears into a dark scene */if(m.map){m.map.encoding=T.LinearEncoding;m.map.needsUpdate=true;if(m.emissive){m.emissive.set(0xffffff);m.emissiveMap=m.map;m.emissiveIntensity=.55}}if(!fix.lg){fix.lg=1;console.log('[char] material: '+m.type+', texture '+(m.map?'yes':'NO')+', skinning '+m.skinning)}}if(gun){if(m.metalness!==undefined){m.metalness=Math.min(m.metalness,.3);m.roughness=Math.max(m.roughness||0,.5)}if(si&&!q[2]&&m.color)m.color.set(q[1])}return m};
 x.material=Array.isArray(x.material)?x.material.map(fix):fix(x.material)});return w}
 /* ---------- menus ---------- */
