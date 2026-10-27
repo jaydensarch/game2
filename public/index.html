@@ -972,7 +972,7 @@ np[i*3]=acc.x;np[i*3+1]=acc.y;np[i*3+2]=acc.z}
 /* sit the cloth a little off the body (so it doesn't z-fight with / sink into the skin), then give it smooth normals */
 const idxArr=gm.geometry.index?Array.from({length:gm.geometry.index.count},(_,q)=>gm.geometry.index.getX(q)):null,n0=weldNormals(np,idxArr),infl=mSpan*.004;
 for(let i=0;i<n;i++){np[i*3]+=n0[i*3]*infl;np[i*3+1]+=n0[i*3+1]*infl;np[i*3+2]+=n0[i*3+2]*infl}
-const lay=garmentLayer(key,accSlot(key,{}));if(lay){const nL=weldNormals(np,idxArr),iL=lay*mSpan*.012;for(let i=0;i<n*3;i++)np[i]+=nL[i]*iL}
+const lay=garmentLayer(key,accSlot(key,{}));if(lay){const nL=weldNormals(np,idxArr),iL=Math.min(lay*mSpan*.012,mSpan*.012);/* capped: blind big inflates shrink a closed shell's cavity */for(let i=0;i<n*3;i++)np[i]+=nL[i]*iL}
 /* the mannequin's chest / thighs are often fuller than the body the garment was made for: anything that ended up inside the skin is pushed back out */
 const F=bodyField(bm,null),pushed=pushOutOfBody(np,idxArr,F,mSpan*.006+lay*mSpan*.012,mSpan*.06);
 const n1=weldNormals(np,idxArr),m3=new T.Matrix3().getNormalMatrix(bi);
@@ -1034,17 +1034,22 @@ let bn0=1e9,bn1=1e9,bn2=1e9,bx0=-1e9,bx1=-1e9,bx2=-1e9;for(const i of cand){cons
 const far2=(Hm*.14)*(Hm*.14),RMAX=Math.ceil(.14*Hm/cell),nearest=(x,y,z)=>{const ox=Math.max(bn0-x,0,x-bx0),oy=Math.max(bn1-y,0,y-bx1),oz=Math.max(bn2-z,0,z-bx2);if(ox*ox+oy*oy+oz*oz>far2)return -1;const cx=Math.floor(x/cell),cy=Math.floor(y/cell),cz=Math.floor(z/cell);let best=-1,bd=1e30;for(let r=0;r<=RMAX;r++){for(let dx=-r;dx<=r;dx++)for(let dy=-r;dy<=r;dy++){const eg=Math.abs(dx)==r||Math.abs(dy)==r;for(let dz=-r;dz<=r;dz+=eg?1:(2*r||1)){const a=grid.get(gk(cx+dx,cy+dy,cz+dz));if(!a)continue;for(const i of a){const ex=bx[i*3]-x,ey=bx[i*3+1]-y,ez=bx[i*3+2]-z,d=ex*ex+ey*ey+ez*ez;if(d<bd){bd=d;best=i}}}}if(best>=0&&Math.sqrt(bd)<=r*cell)break}return best};
 return BFC[bck]={bx,bnr,Hm,ymin,ymax,nearest,count:cand.length,hasN:!!bna,cand}}
 /* push cloth vertices (positions in mannequin bind space, modified in place) out of the skin, then smooth the push over the surface so the cloth doesn't get lumpy.
-   `off` = how far above the skin it must sit, `reach` = only vertices this close to the skin are touched. Returns how many were pushed. */
-function pushOutOfBody(np,idx,F,off,reach){if(!F.hasN)return 0;const n=np.length/3,base=Float32Array.from(np);let pushed=0;
+   `off` = how far above the skin it must sit, `reach` = only vertices this close to the skin are touched. Returns how many were pushed.
+   The goal is capped at a small HARD CLEARANCE: the offset is a nice-to-have for thin, baggy cloth, but a structured shell (vest / plate carrier / armour) is
+   modelled with its own inner cavity only 1-2 cm wide - forcing its whole inner surface out to a 4-6 cm layer offset inflates the shell and the smoothing pass
+   then crumples it (thousands of verts shoved out = the crumpled-vest bug). The shell's own thickness / cavity shape is kept; only true intersection is repaired. */
+function pushOutOfBody(np,idx,F,off,reach){if(!F.hasN)return 0;const n=np.length/3,base=Float32Array.from(np);let pushed=0;const hard=Math.min(off,(F.Hm||1.7)*.0035);
 for(let i=0;i<n;i++){const x=np[i*3],y=np[i*3+1],z=np[i*3+2],c=F.nearest(x,y,z);if(c<0)continue;const dx=x-F.bx[c*3],dy=y-F.bx[c*3+1],dz=z-F.bx[c*3+2],dist=Math.sqrt(dx*dx+dy*dy+dz*dz),dot=dx*F.bnr[c*3]+dy*F.bnr[c*3+1]+dz*F.bnr[c*3+2];
-if(dist<reach&&dot<off){const p=Math.min(off-dot,reach);np[i*3]=x+F.bnr[c*3]*p;np[i*3+1]=y+F.bnr[c*3+1]*p;np[i*3+2]=z+F.bnr[c*3+2]*p;pushed++}}
+if(dist<reach&&dot<hard){const p=Math.min(hard-dot,reach);np[i*3]=x+F.bnr[c*3]*p;np[i*3+1]=y+F.bnr[c*3+1]*p;np[i*3+2]=z+F.bnr[c*3+2]*p;pushed++}}
 if(pushed&&idx){const rep=weldRep(base),adj=new Map(),add=(a,c)=>{a=rep[a];let l=adj.get(a);if(!l)adj.set(a,l=[]);l.push(rep[c])};for(let t=0;t+2<idx.length;t+=3){const a=idx[t],b=idx[t+1],c=idx[t+2];add(a,b);add(a,c);add(b,a);add(b,c);add(c,a);add(c,b)}
 let d=new Float32Array(n*3);for(let i=0;i<n*3;i++)d[i]=np[i]-base[i];
 for(let it=0;it<4;it++){const d2=new Float32Array(d);adj.forEach((l,r)=>{let sx=0,sy=0,sz=0;for(const q of l){sx+=d[q*3];sy+=d[q*3+1];sz+=d[q*3+2]}const m=l.length;d2[r*3]=d[r*3]*.5+sx/m*.5;d2[r*3+1]=d[r*3+1]*.5+sy/m*.5;d2[r*3+2]=d[r*3+2]*.5+sz/m*.5});for(let i=0;i<n;i++){const r=rep[i];d[i*3]=d2[r*3];d[i*3+1]=d2[r*3+1];d[i*3+2]=d2[r*3+2]}}
 for(let i=0;i<n*3;i++)np[i]=base[i]+d[i]
-/* smoothing can pull a vertex back under the skin: final hard pass, no smoothing */
-for(let i=0;i<n;i++){const x=np[i*3],y=np[i*3+1],z=np[i*3+2],c=F.nearest(x,y,z);if(c<0)continue;const dx=x-F.bx[c*3],dy=y-F.bx[c*3+1],dz=z-F.bx[c*3+2],dist=Math.sqrt(dx*dx+dy*dy+dz*dz),dot=dx*F.bnr[c*3]+dy*F.bnr[c*3+1]+dz*F.bnr[c*3+2],mn=off*.6;
+/* smoothing can pull a vertex back under the skin: final hard pass, no smoothing (same capped clearance as above) */
+for(let i=0;i<n;i++){const x=np[i*3],y=np[i*3+1],z=np[i*3+2],c=F.nearest(x,y,z);if(c<0)continue;const dx=x-F.bx[c*3],dy=y-F.bx[c*3+1],dz=z-F.bx[c*3+2],dist=Math.sqrt(dx*dx+dy*dy+dz*dz),dot=dx*F.bnr[c*3]+dy*F.bnr[c*3+1]+dz*F.bnr[c*3+2],mn=hard;
 if(dist<reach*1.5&&dot<mn){const p=mn-dot;np[i*3]=x+F.bnr[c*3]*p;np[i*3+1]=y+F.bnr[c*3+1]*p;np[i*3+2]=z+F.bnr[c*3+2]*p}}}
+/* diagnostics: how hard the push stage had to work. A clean fit needs a small, near-uniform nudge (just the layer offset); a crumpled fit shows a big, wildly varying one. */
+try{const H=F.Hm||1.7;let s=0,s2=0,mx=0,c2=0;for(let i=0;i<n*3;i+=3){const m2=Math.hypot(np[i]-base[i],np[i+1]-base[i+1],np[i+2]-base[i+2]);s+=m2;s2+=m2*m2;if(m2>mx)mx=m2;c2++}if(c2){const mn2=s/c2,vr=Math.sqrt(Math.max(0,s2/c2-mn2*mn2));window.__pushStats={mean:mn2/H,max:mx/H,std:vr/H,n:c2}}}catch(_){}
 return pushed}
 
 /* =====================================================================================================================================================
@@ -1066,7 +1071,11 @@ const nk2=n=>String(n).replace(/^mixamorig\d*[_:]?/i,'').toLowerCase().replace(/
 const ek=bm.geometry.uuid+'|'+slot;let E=ENVC[ek];
 if(!E){const mI=bm.skeleton.boneInverses,P=k=>mb.has(k)?new T.Vector3().setFromMatrixPosition(mI[mb.get(k)].clone().invert()):null,LM={hips:P('hips'),neck:P('neck'),head:P('head'),lf:P('leftfoot'),rf:P('rightfoot'),la:P('leftarm'),ra:P('rightarm'),lh:P('lefthand'),rh:P('righthand')};
 if(!LM.hips||!LM.neck||!LM.head||!LM.lf||!LM.rf)return null;
-const okKey=slot=='legs'?/^(hips|(left|right)(upleg|leg|foot|toebase))$/:slot=='feet'?/^(left|right)(foot|toebase|leg)$/:/^(hips|spine\d*|neck|(left|right)(shoulder|arm|forearm))$/;
+/* the obstacle field for slot 'torso' deliberately EXCLUDES the arms: in the bind pose the arms stick straight out sideways, straight through the vest's side
+   panels and armholes. With the arms in the field, pushOutOfBody shoved the sides of every torso garment outward until they cleared the T-pose arms - inflating
+   vests into barrels and crumpling their panels (the arms hang down in game; the sleeves/holes follow the arm bones by skinning anyway). The upper arms themselves
+   are covered by the vest only via the skin-weight copy, not by pushing. */
+const okKey=slot=='legs'?/^(hips|(left|right)(upleg|leg|foot|toebase))$/:slot=='feet'?/^(left|right)(foot|toebase|leg)$/:/^(hips|spine\d*|neck|(left|right)shoulder)$/;
 const okIdx=new Uint8Array(bm.skeleton.bones.length);bm.skeleton.bones.forEach((x,i)=>{okIdx[i]=okKey.test(nk2(x.name))?1:0});
 const F=bodyField(bm,okIdx),F0=bodyField(bm,null);if(F.count<50||!(F0.Hm>0)||!F0.hasN)return null;
 /* neck radius (for the collar) = how far the skin is from the neck axis between the neck joint and halfway to the head */
@@ -1084,9 +1093,9 @@ return{top:LM.neck.y+(LM.head.y-LM.neck.y)*.5,bot:LM.hips.y-.25*tl,cb:LM.hips.y+
 function neckClamp(P,env,extra,mark){const {LM,neckR}=env,top=LM.neck.y+(LM.head.y-LM.neck.y)*.5,rc=neckR*1.35,n=P.length/3;let c=0;
 for(let i=0;i<n;i++){if(!(P[i*3+1]>top||(extra&&extra[i])))continue;let dx=P[i*3]-LM.neck.x,dz=P[i*3+2]-LM.neck.z;const d=Math.hypot(dx,dz)||1,k=Math.min(1,rc/d);P[i*3]=LM.neck.x+dx*k;P[i*3+1]=Math.min(P[i*3+1],top);P[i*3+2]=LM.neck.z+dz*k;c++;if(mark)mark[i]=1}return c}
 /* ---- the score ---- */
-function fitScoreP(P,ix,env,slot,layer,pre){const {F0,F,LM,Hm}=env,bd=slotBand(env,slot),n=P.length/3,st=Math.max(1,Math.floor(n/1500)),S=[],ds=[];let inside=0,wrong=0,cx=0;
+function fitScoreP(P,ix,env,slot,layer,pre){const {F0,F,LM,Hm}=env,bd=slotBand(env,slot),n=P.length/3,st=Math.max(1,Math.floor(n/1500)),S=[],ds=[];let inside=0,deep=0,wrong=0,cx=0;
 for(let i=0;i<n;i+=st)S.push(i);
-for(const i of S){const x=P[i*3],y=P[i*3+1],z=P[i*3+2],c=F0.nearest(x,y,z);cx+=x;if(c<0){ds.push(Hm);wrong++;continue}const dx=x-F0.bx[c*3],dy=y-F0.bx[c*3+1],dz=z-F0.bx[c*3+2],d=Math.sqrt(dx*dx+dy*dy+dz*dz),dot=dx*F0.bnr[c*3]+dy*F0.bnr[c*3+1]+dz*F0.bnr[c*3+2];ds.push(d);if(dot<-.004*Hm&&d<.03*Hm)inside++;
+for(const i of S){const x=P[i*3],y=P[i*3+1],z=P[i*3+2],c=F0.nearest(x,y,z);cx+=x;if(c<0){ds.push(Hm);wrong++;continue}const dx=x-F0.bx[c*3],dy=y-F0.bx[c*3+1],dz=z-F0.bx[c*3+2],d=Math.sqrt(dx*dx+dy*dy+dz*dz),dot=dx*F0.bnr[c*3]+dy*F0.bnr[c*3+1]+dz*F0.bnr[c*3+2];ds.push(d);if(dot<-.004*Hm&&d<.03*Hm)inside++;if(dot<-.015*Hm&&d>.03*Hm)deep++;/* DEEP inside the body: no correct fit leaves vertices buried this far in (a scaled-into-the-torso vest, a crumpled shell). Counted even when pre=1, unlike the near-surface 'inside' metric. */
 if(y>bd.top+.02*Hm||(bd.bot!==null&&y<bd.bot-.02*Hm))wrong++}
 ds.sort((a,b)=>a-b);const p90=ds[Math.floor(ds.length*.9)]/Hm,m=S.length;
 /* coverage: the part of the body this garment is for must have cloth close to it */
@@ -1094,7 +1103,7 @@ const cands=[];const cl=F.bx;for(let q=0;q<F.cand.length;q+=7){const i=F.cand[q]
 const gs=S.length>1200?S.filter((_,k)=>k%2==0):S;let cov=0,cn=0;const thr2=(.05*Hm)*(.05*Hm);
 for(let q=0;q<cands.length;q+=Math.max(1,Math.floor(cands.length/500))){const i=cands[q],x=cl[i*3],y=cl[i*3+1],z=cl[i*3+2];let hit=0;for(const g of gs){const dx=P[g*3]-x,dy=P[g*3+1]-y,dz=P[g*3+2]-z;if(dx*dx+dy*dy+dz*dz<thr2){hit=1;break}}cov+=hit;cn++}
 const cover=cn?cov/cn:0;let sp=0;if(ix){const f=spikeFn(P,ix,(LM.head.y-LM.hips.y)*2);if(f){const T3=Math.floor(ix.count/3),sk=Math.max(1,Math.floor(T3/4000));let bad=0,tot=0;for(let t=0;t<T3;t+=sk){tot++;if(f(ix.getX(t*3),ix.getX(t*3+1),ix.getX(t*3+2)))bad++}sp=tot?bad/tot:0}}
-const parts={float:Math.max(0,p90-(.04+(layer||0)*.03))*12,cover:(1-cover)*2.5,wrong:wrong/m*4,spike:sp*20,inside:pre?0:inside/m*2,asym:Math.abs(cx/m-LM.hips.x)/Hm*4},score=parts.float+parts.cover+parts.wrong+parts.spike+parts.inside+parts.asym;
+const parts={float:Math.max(0,p90-(.04+(layer||0)*.03))*12,cover:(1-cover)*2.5,wrong:wrong/m*4,spike:sp*20,inside:pre?0:inside/m*2,deep:deep/m*6,asym:Math.abs(cx/m-LM.hips.x)/Hm*4},score=parts.float+parts.cover+parts.wrong+parts.spike+parts.inside+parts.deep+parts.asym;
 return{score,parts,txt:'float '+(p90*100).toFixed(1)+'% cover '+Math.round(cover*100)+'% wrong '+Math.round(wrong/m*100)+'% spikes '+(sp*100).toFixed(1)+'%'}}
 function geoMP(geo,bm){const pa=geo.attributes.position,n=pa.count,P=new Float32Array(n*3),v=new T.Vector3();for(let i=0;i<n;i++){v.set(pa.getX(i),pa.getY(i),pa.getZ(i)).applyMatrix4(bm.bindMatrix);P[i*3]=v.x;P[i*3+1]=v.y;P[i*3+2]=v.z}return P}
 function itemsScore(items,env,slot,layer){let tw=0,sc=0,parts=null,txt='';for(const it of items){const n=it.geo.attributes.position.count,r=fitScoreP(geoMP(it.geo,env.bm),it.geo.index,env,slot,layer);sc+=r.score*n;tw+=n;if(!parts||n>(parts.n||0)){parts=Object.assign({n},r.parts);txt=r.txt}}return{score:tw?sc/tw:99,txt}}
@@ -1109,7 +1118,9 @@ for(const [A,Hd] of [[LM.la,LM.lh],[LM.ra,LM.rh]]){const sg=Math.sign(A.x-LM.hip
 for(let i=0;i<n;i++){const x=P[i*3],y=P[i*3+1],z=P[i*3+2];if((x-LM.hips.x)*sg<trunkW+.012*Hm)continue;if(Math.hypot(x-A.x,y-A.y,z-A.z)>.5*Hm)continue;idx.push(i)}
 if(idx.length<40)continue;const ds=idx.map(i=>Math.hypot(P[i*3]-A.x,P[i*3+1]-A.y,P[i*3+2]-A.z)),so=ds.slice().sort((a,b)=>a-b),thr=so[Math.floor(so.length*.75)];if(ds.filter(d=>d>.09*Hm).length<40)continue;/* a vest has no sleeve to turn */let cx=0,cy=0,cz=0,cn=0;
 idx.forEach((i,k)=>{if(ds[k]>=thr){cx+=P[i*3];cy+=P[i*3+1];cz+=P[i*3+2];cn++}});const dc=new T.Vector3(cx/cn-A.x,cy/cn-A.y,cz/cn-A.z).normalize(),ang=Math.acos(Math.max(-1,Math.min(1,dc.dot(dt))));
-if(ang<.35||ang>1.9)continue;CHZ.log.push('clothing sleeve '+(sg>0?'+x':'-x')+': arm direction is '+Math.round(ang*57.3)+' deg off the mannequin\'s ('+idx.length+' vertices)');const qf=new T.Quaternion().setFromUnitVectors(dc,dt),qi=new T.Quaternion(),q=new T.Quaternion(),v=new T.Vector3();
+/* a real A-pose sleeve hangs 20-60 deg off the mannequin's T-pose arm. A mass pointing ~90 deg sideways/backwards is not a sleeve at all - it is the side panel / back
+   of a shell garment (a plate carrier with no sleeves measures exactly that), and turning it onto the arm line wrecks the garment. Skip anything past ~63 deg. */
+if(ang<.35||ang>1.1)continue;CHZ.log.push('clothing sleeve '+(sg>0?'+x':'-x')+': arm direction is '+Math.round(ang*57.3)+' deg off the mannequin\'s ('+idx.length+' vertices)');const qf=new T.Quaternion().setFromUnitVectors(dc,dt),qi=new T.Quaternion(),q=new T.Quaternion(),v=new T.Vector3();
 for(let i=0;i<n;i++){const dx=P[i*3]-A.x,dy=P[i*3+1]-A.y,dz=P[i*3+2]-A.z,off=(P[i*3]-LM.hips.x)*sg-trunkW;if(off<=0||Math.hypot(dx,dy,dz)>.6*Hm)continue;
 v.set(dx,dy,dz);const pr=v.dot(dc),w=Math.max(0,Math.min(1,off/(.02*Hm)))*Math.max(0,Math.min(1,pr/(.05*Hm)));if(w<=0)continue;q.copy(qi).slerp(qf,w);v.applyQuaternion(q);P[i*3]=A.x+v.x;P[i*3+1]=A.y+v.y;P[i*3+2]=A.z+v.z;moved++}}
 return moved}
@@ -1120,10 +1131,17 @@ for(let it=0;it<(iters||22);it++){const pr=[];for(let i=0;i<N;i+=st){const x=q[i
 if(pr.length<20)break;pr.sort((a,b)=>a[0]-b[0]);const k=Math.max(20,Math.floor(pr.length*.6));let px=0,py=0,pz=0,bx=0,by=0,bz=0;for(let j=0;j<k;j++){const [,i,c]=pr[j];px+=q[i*3];py+=q[i*3+1];pz+=q[i*3+2];bx+=F.bx[c*3];by+=F.bx[c*3+1];bz+=F.bx[c*3+2]}px/=k;py/=k;pz/=k;bx/=k;by/=k;bz/=k;
 let num=0,den=0;for(let j=0;j<k;j++){const [,i,c]=pr[j];const ax=q[i*3]-px,ay=q[i*3+1]-py,az=q[i*3+2]-pz;num+=ax*(F.bx[c*3]-bx)+ay*(F.bx[c*3+1]-by)+az*(F.bx[c*3+2]-bz);den+=ax*ax+ay*ay+az*az}
 let sn=den>1e-12?num/den:s;sn=Math.max(smin,Math.min(smax,sn));s=it<5?s*.5+sn*.5:sn;t=[bx-s*px,by-s*py,bz-s*pz]}
-/* refine: keep the garment's centre where it is and look for the scale that hugs the skin best (trimmed mean distance to the skin) - ICP alone settles a few % too big */
+/* refine: keep the garment's centre where it is and look for the scale that hugs the skin best. The error is CLEARANCE-AWARE: a vertex that ends up
+   INSIDE the body (signed distance below the surface offset) costs much more than one that sticks out - a plain |distance-offset| average treats "buried
+   in the chest" and "resting on the chest" the same, which made thick closed garments (vests / plate carriers) shrink until their front and back panels
+   sat inside the torso, and pushOutOfBody then shoved most of their vertices back out through the skin (the crumpled-vest bug). The scale settles at the
+   smallest one whose inner surface clears the skin; thickness (pouches, armour plates) is free to stick out up to a generous bound. */
 let cx=0,cy=0,cz=0,cn=0;for(let i=0;i<N;i+=st){cx+=q[i*3];cy+=q[i*3+1];cz+=q[i*3+2];cn++}cx/=cn;cy/=cn;cz/=cn;const wx=cx*s+t[0],wy=cy*s+t[1],wz=cz*s+t[2],Hm=env.Hm;let bestF=1,bestO=1e30;
-for(let k=0;k<=28;k++){const f=.86+k*.01,s2=Math.max(smin,Math.min(smax,s*f)),t2=[wx-s2*cx,wy-s2*cy,wz-s2*cz],ds=[];for(let i=0;i<N;i+=st*2){const x=q[i*3]*s2+t2[0],y=q[i*3+1]*s2+t2[1],z=q[i*3+2]*s2+t2[2],c=F.nearest(x,y,z);if(c<0)continue;const dx=x-F.bx[c*3],dy=y-F.bx[c*3+1],dz=z-F.bx[c*3+2];ds.push(Math.abs(dx*F.bnr[c*3]+dy*F.bnr[c*3+1]+dz*F.bnr[c*3+2]-.007*Hm))}
-if(ds.length<20)continue;ds.sort((a,b)=>a-b);const m=Math.floor(ds.length*.7);let o=0;for(let j=0;j<m;j++)o+=ds[j];o/=m;if(o<bestO-1e-9){bestO=o;bestF=f}}
+for(let k=0;k<=40;k++){const f=.70+k*.015,s2=Math.max(smin,Math.min(smax,s*f)),t2=[wx-s2*cx,wy-s2*cy,wz-s2*cz],ds=[];let ins=0;
+for(let i=0;i<N;i+=st*2){const x=q[i*3]*s2+t2[0],y=q[i*3+1]*s2+t2[1],z=q[i*3+2]*s2+t2[2],c=F.nearest(x,y,z);if(c<0)continue;const dx=x-F.bx[c*3],dy=y-F.bx[c*3+1],dz=z-F.bx[c*3+2],dot=dx*F.bnr[c*3]+dy*F.bnr[c*3+1]+dz*F.bnr[c*3+2];
+if(dot<-.004*Hm)ins++;ds.push(Math.max(0,.007*Hm-dot)+2*Math.max(0,-dot)+.7*Math.max(0,dot-.10*Hm))}
+if(ds.length<20)continue;ds.sort((a,b)=>a-b);const m=Math.floor(ds.length*.7);let o=0;for(let j=0;j<m;j++)o+=ds[j];o/=m;o+=ins/ds.length*8;/* the inside share is never trimmed away */
+if(o<bestO-1e-9){bestO=o;bestF=f}}
 const s3=Math.max(smin,Math.min(smax,s*bestF));t=[wx-s3*cx,wy-s3*cy,wz-s3*cz];s=s3;return{s,t}}
 /* Garments (vests / plate carriers especially) are often modelled for a body with different proportions. After the uniform fit, width, height and depth are
    adjusted separately - within -30% / +30% - so the cloth hugs THIS body instead of floating in front of it. */
@@ -1140,6 +1158,8 @@ for(const m of sms){const pa=m.geometry.attributes.position;for(let i=0;i<pa.cou
 const bd=slotBand(env,slot),top=slot=='legs'?LM.hips.y+.035*Hm:slot=='feet'?(LM.lf.y+LM.rf.y)/2+.05*Hm:LM.neck.y+.01*Hm,bot=slot=='legs'?(LM.lf.y+LM.rf.y)/2:slot=='feet'?F0.ymin:LM.hips.y-.07*Hm,
 cs=cfg&&+cfg.scale>0?+cfg.scale:1;let bx0=0,by0=0,bz0=0,bc=0;for(let q=0;q<F.cand.length;q+=5){const i=F.cand[q],y=F.bx[i*3+1];if(y>=bd.cb&&y<=bd.ct){bx0+=F.bx[i*3];by0+=F.bx[i*3+1];bz0+=F.bx[i*3+2];bc++}}if(!bc)return null;bx0/=bc;bz0/=bc;
 const layer0=garmentLayer(key,slot);let best=null;const q=new Float32Array(N*3);
+/* how much of a candidate ends up DEEP inside the skin (buried, not just touching): a fit that buries its cloth is broken, whatever its distance score says */
+const clearFrac=PP=>{let c=0,m=0;const stq=Math.max(1,Math.floor(N/600));for(let i=0;i<N;i+=stq){const x=PP[i*3],y=PP[i*3+1],z=PP[i*3+2],k=F.nearest(x,y,z);m++;if(k<0)continue;const dx=x-F.bx[k*3],dy=y-F.bx[k*3+1],dz=z-F.bx[k*3+2],d=Math.sqrt(dx*dx+dy*dy+dz*dz),dot=dx*F.bnr[k*3]+dy*F.bnr[k*3+1]+dz*F.bnr[k*3+2];if(dot<-.012*Hm&&d>.025*Hm)c++}return m?c/m:1},vlog=[];
 for(const [oname,of] of ORIS){let y0=1e9,y1=-1e9,mx=0,mz=0;for(let i=0;i<N;i++){const r=of(gv[i*3],gv[i*3+1],gv[i*3+2]);q[i*3]=r[0];q[i*3+1]=r[1];q[i*3+2]=r[2];if(r[1]<y0)y0=r[1];if(r[1]>y1)y1=r[1];mx+=r[0];mz+=r[2]}mx/=N;mz/=N;const gh=y1-y0;if(!(gh>1e-9))continue;
 const s0=(top-bot)/gh,runStart=(k,anc)=>{const sk=s0*k,tk=[bx0-sk*mx,anc=='b'?bot-sk*y0:top-sk*y1,bz0-sk*mz];return icpScale(q,N,env,sk,tk,s0*.55,s0*1.25,k==1?22:12)},
 evalIc=c=>{const PP=new Float32Array(N*3);for(let i=0;i<N*3;i+=3){PP[i]=q[i]*c.s+c.t[0];PP[i+1]=q[i+1]*c.s+c.t[1];PP[i+2]=q[i+2]*c.s+c.t[2]}if(slot=='torso')neckClamp(PP,env);return fitScoreP(PP,null,env,slot,garmentLayer(key,slot),1).score};
@@ -1147,19 +1167,42 @@ evalIc=c=>{const PP=new Float32Array(N*3);for(let i=0;i<N*3;i+=3){PP[i]=q[i]*c.s
 const ic0=runStart(1,'b'),sc0=evalIc(ic0);let icBest=ic0,icBestSc=sc0;if(sc0>.3&&sc0<1.6)for(const [k,anc] of [[.85,'b'],[.72,'b'],[1,'t'],[.85,'t']]){const c2=runStart(k,anc),sc2=evalIc(c2);if(sc2<icBestSc-.02){icBest=c2;icBestSc=sc2}}
 const ics=icBest===ic0?[ic0]:[ic0,icBest],lf=cfg&&+cfg.lift?+cfg.lift*Hm:0,fw=cfg&&+cfg.fwd?+cfg.fwd*Hm:0,mkP=(S,tt)=>{const P=new Float32Array(N*3);for(let i=0;i<N*3;i+=3){P[i]=q[i]*S[0]+tt[0];P[i+1]=q[i+1]*S[1]+tt[1];P[i+2]=q[i+2]*S[2]+tt[2]}return P},bases=[];
 for(const ic of ics){const s=ic.s*cs,t=ic.t.slice();if(cs!==1){t[0]=bx0-s*mx;t[2]=bz0-s*mz}t[1]+=lf;t[2]+=fw;bases.push([oname,mkP([s,s,s],t),0,ic.s]);
-if(cs===1&&icBestSc<1.6){const an=icpAniso(q,N,env,ic.s,ic.t);if(an){const dv=Math.max(Math.abs(an.S[0]/ic.s-1),Math.abs(an.S[1]/ic.s-1),Math.abs(an.S[2]/ic.s-1));if(dv>.04)bases.push([oname+', stretched to the body '+an.S.map(v=>(v/ic.s).toFixed(2)).join('/'),mkP(an.S,[an.t[0],an.t[1]+lf,an.t[2]+fw]),.05,ic.s])}}}
+if(cs===1&&icBestSc<1.6){const an=icpAniso(q,N,env,ic.s,ic.t);if(an){const dv=Math.max(Math.abs(an.S[0]/ic.s-1),Math.abs(an.S[1]/ic.s-1),Math.abs(an.S[2]/ic.s-1));if(dv>.04){const AP=mkP(an.S,[an.t[0],an.t[1]+lf,an.t[2]+fw]);/* the stretch must not bury the garment in the body (a depth squash used to fold vests into the torso) */if(clearFrac(AP)<=.12)bases.push([oname+', stretched to the body '+an.S.map(v=>(v/ic.s).toFixed(2)).join('/'),AP,.05,ic.s])}}}}
 const sleeveGap=PP=>{let sum=0,c=0;for(let i=0;i<PP.length/3;i+=3){const off=Math.abs(PP[i*3]-LM.hips.x)-env.trunkW;if(off<=.012*Hm)continue;const k=F0.nearest(PP[i*3],PP[i*3+1],PP[i*3+2]);if(k<0){sum+=.15*Hm;c++;continue}sum+=Math.hypot(PP[i*3]-F0.bx[k*3],PP[i*3+1]-F0.bx[k*3+1],PP[i*3+2]-F0.bx[k*3+2]);c++}return c>20?sum/c:0};
 for(const [bn,BP,prior,bs] of bases){const vars=[[bn,BP]];if(slot=='torso'){const P1=BP.slice();if(sleeveRepose(P1,env)>0)vars.push([bn+', sleeves re-posed',P1])}
 /* use the re-posed sleeves only if they clearly lie closer to the arms */
 let useVar=0;if(vars.length>1){const g0=sleeveGap(vars[0][1]),g1=sleeveGap(vars[1][1]);if(g1<g0*.9)useVar=1}
-const [nm,PP]=vars[useVar];if(slot=='torso')neckClamp(PP,env);const sc=fitScoreP(PP,null,env,slot,layer0,1);
-/* a sideways / flipped orientation has to beat 'upright' clearly, not just by a hair */sc.score+=prior+(oname=='upright'?0:.3);if(!best||sc.score<best.sc.score)best={oname:nm,P:PP,sc,s:bs}}
+const [nm,PP0]=vars[useVar];if(slot=='torso')neckClamp(PP0,env);
+/* WIDEN-TO-CLEAR: a shell garment (vest / plate carrier) whose inner cavity intersects the body - side panels through the torso, or a depth-squashed variant - is widened sideways
+   about its own vertical axis until the cloth clears the skin. Repairing EVERY candidate BEFORE scoring means the score competition picks between wearable fits, and the
+   push-out-of-body stage afterwards only has to make gentle, near-uniform nudges instead of violently projecting whole panels onto the skin (which is what crumpled vests). */
+let PP=PP0,nm2=nm;{const stq=Math.max(1,Math.floor(N/600)),pdOf=P=>{let c=0,m=0;for(let i=0;i<N;i+=stq){const x=P[i*3],y=P[i*3+1],z=P[i*3+2],k=F.nearest(x,y,z);if(k<0)continue;m++;const dx=x-F.bx[k*3],dy=y-F.bx[k*3+1],dz=z-F.bx[k*3+2],dot=dx*F.bnr[k*3]+dy*F.bnr[k*3+1]+dz*F.bnr[k*3+2];if(dot<-.015*Hm)c++}return m?c/m:0};
+if(pdOf(PP)>.03){let axx=0,axz=0,cx0=Math.ceil(N/stq);for(let i=0;i<N;i+=stq){axx+=PP[i*3];axz+=PP[i*3+2]}axx/=cx0;axz/=cx0;
+for(let g=1;g<=8;g++){const gf=1+.05*g,P2=new Float32Array(N*3);for(let i=0;i<N;i++){P2[i*3]=axx+(PP[i*3]-axx)*gf;P2[i*3+1]=PP[i*3+1];P2[i*3+2]=axz+(PP[i*3+2]-axz)*gf}PP=P2;nm2=nm+', widened x'+gf.toFixed(2);if(pdOf(PP)<=.02)break}}}
+const sc=fitScoreP(PP,null,env,slot,layer0,1);{const po0=Hm*.007+layer0*Hm*.012,stq=Math.max(1,Math.floor(N/600));let pen=0,cnt=0,pd=0;for(let i=0;i<N;i+=stq){const x=PP[i*3],y=PP[i*3+1],z=PP[i*3+2],k=F.nearest(x,y,z);if(k<0)continue;cnt++;const dx=x-F.bx[k*3],dy=y-F.bx[k*3+1],dz=z-F.bx[k*3+2],dot=dx*F.bnr[k*3]+dy*F.bnr[k*3+1]+dz*F.bnr[k*3+2];if(dot<0)pen++;if(dot<-.015*Hm)pd++}
+/* ground truth: what the repair stage will do to THIS candidate. A fit that needs a big, wildly varying push comes out crumpled, so the cost of that push is part of the score. */
+const PT=PP.slice();pushOutOfBody(PT,null,F,po0,Hm*.06+layer0*Hm*.012);const PS=window.__pushStats||{mean:0,std:0,max:0};
+vlog.push(nm2.split(', ')[0]+(vars[useVar][0].includes('sleeves')?'+rp':'')+(nm2.includes('widened')?'+w':'')+' '+sc.score.toFixed(2)+'/pen'+Math.round(cnt?pen/cnt*100:0)+'%/pd'+Math.round(cnt?pd/cnt*100:0)+'%/pmean'+(PS.mean*100).toFixed(1)+'/pstd'+(PS.std*100).toFixed(1)+' [f'+sc.parts.float.toFixed(2)+' c'+sc.parts.cover.toFixed(2)+' w'+sc.parts.wrong.toFixed(2)+' a'+sc.parts.asym.toFixed(2)+']');
+sc.score+=PS.std*4+Math.max(0,PS.mean-.012*Hm)*2;/* push roughness + excess push cost */}
+/* a sideways / flipped orientation has to beat 'upright' clearly, not just by a hair */sc.score+=prior+(oname=='upright'?0:.3);if(!best||sc.score<best.sc.score)best={oname:nm2,P:PP,sc,s:bs}}
 if(best.sc.score<=FIT_GOOD)break}
 if(!best)return null;
+/* clearance repair: if the winner still buries part of itself in the body (e.g. a plate carrier whose inner cavity is smaller than this chest), widen it
+   sideways about its own vertical axis (x/z only - the height and the band it was anchored to stay put) until the cloth clears the skin. Widening keeps the
+   garment's shape and texture; letting pushOutOfBody project every buried vertex onto the skin is what crumpled vests before. */
+{let fr=clearFrac(best.P);if(fr>.10){const stq=Math.max(1,Math.floor(N/600));let axx=0,axz=0;for(let i=0;i<N;i+=stq){axx+=best.P[i*3];axz+=best.P[i*3+2]}axx/=Math.ceil(N/stq);axz/=Math.ceil(N/stq);
+for(let g=1;g<=8;g++){const gf=1+.05*g,P2=new Float32Array(N*3);for(let i=0;i<N;i++){P2[i*3]=axx+(best.P[i*3]-axx)*gf;P2[i*3+1]=best.P[i*3+1];P2[i*3+2]=axz+(best.P[i*3+2]-axz)*gf}
+if(clearFrac(P2)<=.10){best.P=P2;best.oname+=', widened x'+gf.toFixed(2);break}}}}
+if(vlog.length)CHZ.log.push('wrap variants (score/deep%): '+vlog.join(' | '));
 /* build the skinned geometry from the winning orientation */
 const items=[];let off=0,pushed=0;const layer=garmentLayer(key,slot),po=Hm*.007+layer*Hm*.012,reach=Hm*.06+layer*Hm*.012,bsi=bm.geometry.attributes.skinIndex,bsw=bm.geometry.attributes.skinWeight,bi=new T.Matrix4().copy(bm.bindMatrix).invert(),m3=new T.Matrix3().getNormalMatrix(bi);
 for(const m of sms){const g=m.geometry,n=g.attributes.position.count,np=best.P.slice(off*3,(off+n)*3),idxArr=g.index?Array.from({length:g.index.count},(_,k)=>g.index.getX(k)):null;off+=n;
-if(layer){const n0=weldNormals(np,idxArr),inf=layer*Hm*.012;for(let i=0;i<n*3;i++)np[i]+=n0[i]*inf}
+if(layer){const n0=weldNormals(np,idxArr),inf=Math.min(layer*Hm*.012,Hm*.012);/* capped: a big layer inflate ballooned the outer surface of thick shells (vests / plate carriers) */
+/* sit the cloth off the skin - but only where it is already OUTSIDE the body. For a closed shell (vest / plate carrier) the INNER surface's normals point at the
+   body, so a blind inflate shrank the cavity and buried the panels again right before pushOutOfBody, which then had to blast them back out through the skin
+   (crumpled vests). Buried vertices are lifted by pushOutOfBody to the layer offset anyway. */
+for(let i=0;i<n;i++){const c=F.nearest(np[i*3],np[i*3+1],np[i*3+2]);if(c>=0){const dx=np[i*3]-F.bx[c*3],dy=np[i*3+1]-F.bx[c*3+1],dz=np[i*3+2]-F.bx[c*3+2];if(dx*F.bnr[c*3]+dy*F.bnr[c*3+1]+dz*F.bnr[c*3+2]<0)continue}
+np[i*3]+=n0[i*3]*inf;np[i*3+1]+=n0[i*3+1]*inf;np[i*3+2]+=n0[i*3+2]*inf}}
 pushed+=pushOutOfBody(np,idxArr,F,po,reach);const sp=spikeFn(np,g.index,Hm*2),cr=sp?cutTris(g.index,g.groups,sp):null;
 const ni=new Uint16Array(n*4),wf=new Float32Array(n*4);for(let i=0;i<n;i++){const c=F.nearest(np[i*3],np[i*3+1],np[i*3+2]);if(c>=0){let S=0;for(let j=0;j<4;j++)S+=ATC(bsw,c,j);for(let j=0;j<4;j++){ni[i*4+j]=ATC(bsi,c,j);wf[i*4+j]=S>0?ATC(bsw,c,j)/S:(j==0?1:0)}}else{wf[i*4]=1;ni[i*4]=mb.get('hips')}}
 const n1=weldNormals(np,idxArr),nn=new Float32Array(n*3),acc=new T.Vector3();for(let i=0;i<n;i++){acc.set(n1[i*3],n1[i*3+1],n1[i*3+2]).applyMatrix3(m3).normalize();nn[i*3]=acc.x;nn[i*3+1]=acc.y;nn[i*3+2]=acc.z;acc.set(np[i*3],np[i*3+1],np[i*3+2]).applyMatrix4(bi);np[i*3]=acc.x;np[i*3+1]=acc.y;np[i*3+2]=acc.z}
