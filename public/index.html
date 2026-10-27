@@ -867,7 +867,7 @@ const bodyFor=s=>{for(const k of bodyKeys(s)){const x=STORE.bod.find(y=>y.key==k
    3. it is scaled to the measured head / torso and placed in the right spot (hat on the crown, glasses at eye level, backpack on the back...).
    Admin only needs to nudge: scale x, height, forward/back, slot, flip. cfg = {slot, scale, lift, fwd, flip}. */
 const ACC_SLOTS={hat:/hat|cap|helm|crown|horn|beanie|hood|halo|hair|bandana|headband|beret|wig|antler|bunny/i,glasses:/glass|goggle|shade|visor|spectacle|monocle|eye/i,mask:/mask|balaclava|face|respirator|gasmask|beard|mustache|moustache/i,ears:/headphone|headset|earmuff|earphone|earpiece|airpod/i,neck:/scarf|necklace|chain|collar|\btie\b|bowtie|bow-tie|neck|medal|dogtag/i,legs:/pants|trouser|jeans|shorts|skirt|legging|cargo|slacks|joggers|bottoms/i,feet:/boots?\b|shoes?\b|sneaker|sock|sandal|footwear/i,torso:/shirt|vest|jacket|\btee\b|tshirt|t-shirt|hoodie|sweater|jumper|jersey|armou?r|plate|chest|torso|coat|poncho|tunic|bodysuit/i,back:/back|pack|bag|wing|cape|cloak|quiver|jetpack|tank|rucksack|satchel|backpack/i};
-function accSlot(key,cfg){if(cfg&&ACC_SLOTS[cfg.slot])return cfg.slot;const k=String(key||'');for(const s of ['ears','glasses','mask','legs','feet','torso','back','neck','hat'])if(ACC_SLOTS[s].test(k))return s;return 'hat'}
+function accSlot(key,cfg){if(cfg&&ACC_SLOTS[cfg.slot])return cfg.slot;const k=String(key||'');/* 'hat' first: a tactical helmet is often called ..._with_headset, which also matches 'ears' - but it is a helmet, so it must sit ON the head, not centred inside it */for(const s of ['hat','ears','glasses','mask','legs','feet','torso','back','neck'])if(ACC_SLOTS[s].test(k))return s;return 'hat'}
 /* measure the character once per mannequin, in the character's own frame (b.g local: y up, +z forward), in metres */
 const ATC=(a,i,k)=>k==0?a.getX(i):k==1?a.getY(i):k==2?a.getZ(i):a.getW(i);
 const ATF=a=>!!a&&(a.isInterleavedBufferAttribute?a.data.array:a.array) instanceof Float32Array;
@@ -1190,9 +1190,18 @@ const own=CHZ.log.slice(l0);pick=cacheSet(STC,ck,{items:win.items,log:own},10)}
 const LY=garmentLayer(key,slot),wr=new T.Group();wr.position.copy(bm.position);wr.quaternion.copy(bm.quaternion);wr.scale.copy(bm.scale);
 for(const it of pick.items){const mats=[].concat(it.src.material).map(q=>clothMat(q,LY,b.tint)),sm=new T.SkinnedMesh(it.geo,Array.isArray(it.src.material)?mats:mats[0]);sm.frustumCulled=false;sm.renderOrder=LY;sm.name=it.src.name;sm.userData.accWrap=1;/* tagged: the mannequin must never mistake a worn garment for the body when measuring */sm.bind(new T.Skeleton(bm.skeleton.bones.slice(),bm.skeleton.boneInverses.map(q=>q.clone())),bm.bindMatrix.clone());wr.add(sm)}
 bm.parent.add(wr);b.g.updateMatrixWorld(true);const gbx=skinBox(wr),sz=gbx.getSize(new T.Vector3());
-if(isFinite(sz.y)&&sz.y>H*.08&&lim.containsBox(gbx)){(b.accs=b.accs||{})[key||'?']=wr;return true}
+if(isFinite(sz.y)&&sz.y>H*.08&&lim.containsBox(gbx)){(b.accs=b.accs||{})[key||'?']=wr;wrapClear(b,key||'?',LY);return true}
 bm.parent.remove(wr);CHZ.log.push('clothing '+key+' rejected after fitting: result '+sz.x.toFixed(2)+' x '+sz.y.toFixed(2)+' x '+sz.z.toFixed(2)+' is outside the body (height '+H.toFixed(2)+')');delete STC[ck];return false}catch(e){CHZ.log.push('clothing error: '+e.message);console.warn('[char] wrap clothing',e);return false}}
 const RGC_has=g=>Object.values(RGC).some(v=>v&&v.geo===g);
+/* layered clothing: each garment is fitted to the BARE body, so a shirt worn under a plate carrier puffs outside the carrier's shell and swallows it (the "vest is in the back" bug).
+   All wrapper geometries live in the mannequin's bind space, so after fitting, every higher layer is pushed out of every lower layer - pose-independent, and both attach orders end up correct. */
+function wrapClear(b,selfKey,selfLY){try{if(selfLY<1)return;const bw=skinBox(b.mw),H=bw.max.y-bw.min.y,items=[];
+for(const k of Object.keys(b.accs)){const w=b.accs[k];if(!w||!w.children)continue;const ly=garmentLayer(k,accSlot(k,{}));if(ly<1)continue;let big=null,c=0;w.children.forEach(x=>{if(x.isSkinnedMesh&&x.geometry&&x.geometry.attributes.position&&x.geometry.attributes.normal&&x.geometry.attributes.position.count>c){c=x.geometry.attributes.position.count;big=x}});if(big)items.push({k,ly,m:big})}
+const self=items.find(x=>x.k===selfKey);if(!self)return;
+for(const it of items){let a=null,und=null;if(it.ly<selfLY){a=self;und=it}else if(it.ly>selfLY){a=it;und=self}if(!a||!und||a===und)continue;
+const F=bodyField(und.m,null);if(!F.hasN||F.count<30)continue;const g=a.m.geometry,pa=g.attributes.position,ix=g.index?g.index.array:null;
+const n0=pushOutOfBody(pa.array,ix,F,H*.004,H*.06);if(!n0)continue;pa.needsUpdate=true;g.computeBoundingSphere();g.computeBoundingBox();
+CHZ.log.push('clothing '+a.k+' pushed out of '+und.k+' ('+n0+' verts) to keep the layers apart')}}catch(e){console.warn('[char] layer clearance',e)}}
 
 /* put an accessory on the mannequin. cfg = {slot,scale,lift,fwd,flip} from admin > Store (all optional) */
 /* rigid fallback for a rigged garment: skin it on the CPU into plain meshes (rest pose) so it can be sized like any prop */
@@ -1226,7 +1235,7 @@ else if(slot=='torso'){/* size off HEIGHT only: a rest pose with arms held out s
 f=ts.y*1.2*S/sz.y;cx=tc.x;cy=tc.y+ts.y*.05;cz=tc.z;parent=F.spine||F.head}
 else if(slot=='legs'||slot=='feet'){const bd=skinBox(mw),lo=b.g.worldToLocal(bd.min.clone()),hi=b.g.worldToLocal(bd.max.clone()),top=slot=='feet'?lo.y+(hi.y-lo.y)*.07:tb.min.y+ts.y*.1,hh2=Math.max(.1,top-lo.y);f=hh2*S/sz.y;cx=tc.x;cy=lo.y+hh2/2;cz=tc.z+(slot=='feet'?hs.z*.3:0);parent=mw}
 else if(slot=='back'){f=mn(ts.x*.8*S/sz.x,ts.y*.8*S/sz.y,ts.x*.55*S/sz.z);cx=tc.x;cy=tc.y+ts.y*.08;cz=tb.min.z-sz.z*f/2+sz.z*f*.12;parent=F.spine||F.head}
-else{f=mn(hs.x*1.14*S/sz.x,hs.y*1.6*S/sz.y,hs.z*1.4*S/sz.z);cy=hb.max.y+sz.y*f/2-hs.y*.1}
+else{/* hat / helmet. A helmet is a deep bowl, not a flat cap: sink it so its rim wraps the crown (down to 30% of the head height, but never more than about half its own height, so a shallow cap still just sits on top) */f=mn(hs.x*1.14*S/sz.x,hs.y*1.6*S/sz.y,hs.z*1.4*S/sz.z);const sink=/helm|hardhat|hard ?hat/i.test(key)?Math.min(hs.y*.30,sz.y*f*.5):hs.y*.1;cy=hb.max.y+sz.y*f/2-sink}
 cy+=lift;cz+=fwd;if(!parent)parent=mw;
 const hold=new T.Group();wrap.position.set(-ct.x,-ct.y,-ct.z);hold.add(wrap);
 const pq=new T.Quaternion(),ps=new T.Vector3(),gq=new T.Quaternion(),wp=b.g.localToWorld(new T.Vector3(cx,cy,cz));
@@ -1261,7 +1270,7 @@ spin.rotation.y=CHV.ry;try{r.render(sc,c)}catch(e){if(!CHV.rerr){CHV.rerr=1;cons
    with no gun the pose code simply lets both arms hang relaxed.) */
 function chNoGun(b){try{const gh=b.gun;if(gh&&gh.parent)gh.parent.remove(gh);b.gun=null;b.gg=null;[...b.g.children].forEach(c=>{if(c!==b.mw&&c.isGroup&&c.scale.x>1.09&&c.scale.x<1.11)b.g.remove(c)})}catch(e){console.warn('[char] no gun',e)}}
 /* small readout under the preview: which build is running + the model's materials (so a wrong look can be diagnosed from a screenshot) */
-function chDiagText(){try{const b=CHV.b,seen=new Set(),rows=[];if(b&&b.mw)b.mw.traverse(x=>{if(!x.isMesh||!x.material)return;[].concat(x.material).forEach(m=>{if(seen.has(m))return;seen.add(m);rows.push((m.name||'?').slice(0,16)+' '+String(m.type).replace('Material','')+' map:'+(m.map?'yes':'no')+' colour:#'+(m.color?m.color.getHexString():'-')+' emissive:'+(m.emissiveIntensity!==undefined?(+m.emissiveIntensity).toFixed(2):'-')+' metal:'+(m.metalness!==undefined?(+m.metalness).toFixed(1):'-')+(m.transparent?' transparent:'+(+m.opacity).toFixed(1):'')+(m.userData&&m.userData.skinFix?'  <- skin colour fix applied':'')+(m.userData&&m.userData.swapped?'  <- red/blue swapped':''))})});return 'character preview build 14 - worn on default mannequin\nlook: '+lkStr()+'\n'+(rows.length?rows.join('\n'):'(no model loaded)')+(CHZ.log.length?'\n'+CHZ.log.slice(-10).join('\n'):'')}catch(e){return 'diag error: '+e.message}}
+function chDiagText(){try{const b=CHV.b,seen=new Set(),rows=[];if(b&&b.mw)b.mw.traverse(x=>{if(!x.isMesh||!x.material)return;[].concat(x.material).forEach(m=>{if(seen.has(m))return;seen.add(m);rows.push((m.name||'?').slice(0,16)+' '+String(m.type).replace('Material','')+' map:'+(m.map?'yes':'no')+' colour:#'+(m.color?m.color.getHexString():'-')+' emissive:'+(m.emissiveIntensity!==undefined?(+m.emissiveIntensity).toFixed(2):'-')+' metal:'+(m.metalness!==undefined?(+m.metalness).toFixed(1):'-')+(m.transparent?' transparent:'+(+m.opacity).toFixed(1):'')+(m.userData&&m.userData.skinFix?'  <- skin colour fix applied':'')+(m.userData&&m.userData.swapped?'  <- red/blue swapped':''))})});return 'character preview build 15 - worn on default mannequin\nlook: '+lkStr()+'\n'+(rows.length?rows.join('\n'):'(no model loaded)')+(CHZ.log.length?'\n'+CHZ.log.slice(-10).join('\n'):'')}catch(e){return 'diag error: '+e.message}}
 function chDiag(){const d=hh('div','cx-diag');d.textContent=chDiagText();return d}
 /* garments load asynchronously, so the panel re-reads the log shortly after anything is written to it */
 let CDT=0;function chDiagSoon(){if(CDT)return;CDT=setTimeout(()=>{CDT=0;try{const d=document.querySelector('.cx-diag');if(d)d.textContent=chDiagText()}catch(e){}},150)}
