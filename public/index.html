@@ -811,6 +811,7 @@ function bodySwapFix(mw,cb){try{if(!swapWanted(cb))return;let n=0;mw.traverse(x=
    DEFAULT MANNEQUIN's skin tone (so it looks like the default character), and the feet get a dark shoe colour. Everything else (shirt, jeans, jacket...) keeps the file's own
    texture. Works for any rigged outfit. admin > Store > the character skin > "Skin material(s)" = none turns this off; its "skin colour" overrides the tone. */
 const DEFAULT_SKIN='#c28f73',AUTO_SHOE='#1e1e22',ZGEO=new WeakMap(),CHZ={log:[]};
+CHZ.log.push=function(){const r=Array.prototype.push.apply(this,arguments);try{chDiagSoon()}catch(e){}return r};
 function zoneSplit(mesh){const geo=mesh.geometry;if(ZGEO.has(geo))return ZGEO.get(geo);let res=null;
 try{const sk=mesh.skeleton,A=geo.attributes,si=A.skinIndex,sw=A.skinWeight;if(!(sk&&si&&sw&&A.position))CHZ.log.push('skin zones: mesh has no skeleton/weights');if(sk&&si&&sw&&A.position){
 const nm=b=>String(b.name).replace(/^mixamorig\d*[_:]?/i,''),sb=sk.bones.map(b=>SKIN_ZONES.test(nm(b))&&!/toe|foot/i.test(b.name)),fb=sk.bones.map(b=>/foot|toe/i.test(nm(b))),n=A.position.count,zs=new Float32Array(n),zf=new Float32Array(n),gc=(a,i,j)=>j==0?a.getX(i):j==1?a.getY(i):j==2?a.getZ(i):a.getW(i);
@@ -844,7 +845,7 @@ if(sw){const id=x2.getImageData(0,0,w,h),d=id.data;for(let i=0;i<d.length;i+=4){
 x.drawImage(c2,0,0);
 const tr=skinTris(dm,top);if(tr.length){const mk=document.createElement('canvas');mk.width=w;mk.height=h;const q=mk.getContext('2d');q.fillStyle=q.strokeStyle='#fff';q.lineWidth=5;q.lineJoin='round';tr.forEach(p=>{q.beginPath();q.moveTo(p[0]*w,p[1]*h);q.lineTo(p[2]*w,p[3]*h);q.lineTo(p[4]*w,p[5]*h);q.closePath();q.fill();q.stroke()});q.globalCompositeOperation='source-in';q.drawImage(di,0,0,w,h);x.drawImage(mk,0,0)}
 const t=new T.Texture(cv);t.flipY=dmap.flipY;t.encoding=dmap.encoding;t.wrapS=t.wrapT=T.RepeatWrapping;t.anisotropy=1;t.needsUpdate=true;return BTX[key]=t}catch(e){console.warn('[char] body on default',e);return null}}
-function bodyOnDefault(cs,dsrc,cb){CHZ.log=[];try{const cf=STORE.cfg['b:'+cb.key]||{};if(String(cf.skinMat||'').trim().toLowerCase()==='none')return null;
+function bodyOnDefault(cs,dsrc,cb){CHZ.log.length=0;try{const cf=STORE.cfg['b:'+cb.key]||{};if(String(cf.skinMat||'').trim().toLowerCase()==='none')return null;
 const cm=firstTexMesh(cs),dm=firstTexMesh(dsrc);if(!cm||!dm||!sameUV(cm,dm)){CHZ.log.push('worn on default mannequin: no (this file has a different body / texture layout)');return null}
 const t=bodyTexOnDefault(cm,dm,cb);if(!t){CHZ.log.push('worn on default mannequin: no (texture not readable)');return null}
 const mw=fitModel(dsrc,1.85,0);if(!(mw.userData.hgt>1.4&&mw.userData.hgt<2.4))return null;
@@ -1083,7 +1084,7 @@ return{top:LM.neck.y+(LM.head.y-LM.neck.y)*.5,bot:LM.hips.y-.25*tl,cb:LM.hips.y+
 function neckClamp(P,env,extra,mark){const {LM,neckR}=env,top=LM.neck.y+(LM.head.y-LM.neck.y)*.5,rc=neckR*1.35,n=P.length/3;let c=0;
 for(let i=0;i<n;i++){if(!(P[i*3+1]>top||(extra&&extra[i])))continue;let dx=P[i*3]-LM.neck.x,dz=P[i*3+2]-LM.neck.z;const d=Math.hypot(dx,dz)||1,k=Math.min(1,rc/d);P[i*3]=LM.neck.x+dx*k;P[i*3+1]=Math.min(P[i*3+1],top);P[i*3+2]=LM.neck.z+dz*k;c++;if(mark)mark[i]=1}return c}
 /* ---- the score ---- */
-function fitScoreP(P,ix,env,slot,layer){const {F0,F,LM,Hm}=env,bd=slotBand(env,slot),n=P.length/3,st=Math.max(1,Math.floor(n/1500)),S=[],ds=[];let inside=0,wrong=0,cx=0;
+function fitScoreP(P,ix,env,slot,layer,pre){const {F0,F,LM,Hm}=env,bd=slotBand(env,slot),n=P.length/3,st=Math.max(1,Math.floor(n/1500)),S=[],ds=[];let inside=0,wrong=0,cx=0;
 for(let i=0;i<n;i+=st)S.push(i);
 for(const i of S){const x=P[i*3],y=P[i*3+1],z=P[i*3+2],c=F0.nearest(x,y,z);cx+=x;if(c<0){ds.push(Hm);wrong++;continue}const dx=x-F0.bx[c*3],dy=y-F0.bx[c*3+1],dz=z-F0.bx[c*3+2],d=Math.sqrt(dx*dx+dy*dy+dz*dz),dot=dx*F0.bnr[c*3]+dy*F0.bnr[c*3+1]+dz*F0.bnr[c*3+2];ds.push(d);if(dot<-.004*Hm&&d<.03*Hm)inside++;
 if(y>bd.top+.02*Hm||(bd.bot!==null&&y<bd.bot-.02*Hm))wrong++}
@@ -1093,7 +1094,7 @@ const cands=[];const cl=F.bx;for(let q=0;q<F.cand.length;q+=7){const i=F.cand[q]
 const gs=S.length>1200?S.filter((_,k)=>k%2==0):S;let cov=0,cn=0;const thr2=(.05*Hm)*(.05*Hm);
 for(let q=0;q<cands.length;q+=Math.max(1,Math.floor(cands.length/500))){const i=cands[q],x=cl[i*3],y=cl[i*3+1],z=cl[i*3+2];let hit=0;for(const g of gs){const dx=P[g*3]-x,dy=P[g*3+1]-y,dz=P[g*3+2]-z;if(dx*dx+dy*dy+dz*dz<thr2){hit=1;break}}cov+=hit;cn++}
 const cover=cn?cov/cn:0;let sp=0;if(ix){const f=spikeFn(P,ix,(LM.head.y-LM.hips.y)*2);if(f){const T3=Math.floor(ix.count/3),sk=Math.max(1,Math.floor(T3/4000));let bad=0,tot=0;for(let t=0;t<T3;t+=sk){tot++;if(f(ix.getX(t*3),ix.getX(t*3+1),ix.getX(t*3+2)))bad++}sp=tot?bad/tot:0}}
-const parts={float:Math.max(0,p90-(.04+(layer||0)*.03))*12,cover:(1-cover)*2.5,wrong:wrong/m*4,spike:sp*20,inside:inside/m*2,asym:Math.abs(cx/m-LM.hips.x)/Hm*4},score=parts.float+parts.cover+parts.wrong+parts.spike+parts.inside+parts.asym;
+const parts={float:Math.max(0,p90-(.04+(layer||0)*.03))*12,cover:(1-cover)*2.5,wrong:wrong/m*4,spike:sp*20,inside:pre?0:inside/m*2,asym:Math.abs(cx/m-LM.hips.x)/Hm*4},score=parts.float+parts.cover+parts.wrong+parts.spike+parts.inside+parts.asym;
 return{score,parts,txt:'float '+(p90*100).toFixed(1)+'% cover '+Math.round(cover*100)+'% wrong '+Math.round(wrong/m*100)+'% spikes '+(sp*100).toFixed(1)+'%'}}
 function geoMP(geo,bm){const pa=geo.attributes.position,n=pa.count,P=new Float32Array(n*3),v=new T.Vector3();for(let i=0;i<n;i++){v.set(pa.getX(i),pa.getY(i),pa.getZ(i)).applyMatrix4(bm.bindMatrix);P[i*3]=v.x;P[i*3+1]=v.y;P[i*3+2]=v.z}return P}
 function itemsScore(items,env,slot,layer){let tw=0,sc=0,parts=null,txt='';for(const it of items){const n=it.geo.attributes.position.count,r=fitScoreP(geoMP(it.geo,env.bm),it.geo.index,env,slot,layer);sc+=r.score*n;tw+=n;if(!parts||n>(parts.n||0)){parts=Object.assign({n},r.parts);txt=r.txt}}return{score:tw?sc/tw:99,txt}}
@@ -1106,7 +1107,7 @@ if(!hc.geo)return null;items.push({src:gm,geo:hc.geo})}return items.length?{item
 function sleeveRepose(P,env){const {LM,Hm,trunkW}=env,n=P.length/3;if(!LM.la||!LM.ra||!LM.lh||!LM.rh)return 0;let moved=0;
 for(const [A,Hd] of [[LM.la,LM.lh],[LM.ra,LM.rh]]){const sg=Math.sign(A.x-LM.hips.x)||1,dt=new T.Vector3().subVectors(Hd,A).normalize(),idx=[];
 for(let i=0;i<n;i++){const x=P[i*3],y=P[i*3+1],z=P[i*3+2];if((x-LM.hips.x)*sg<trunkW+.012*Hm)continue;if(Math.hypot(x-A.x,y-A.y,z-A.z)>.5*Hm)continue;idx.push(i)}
-if(idx.length<40)continue;const ds=idx.map(i=>Math.hypot(P[i*3]-A.x,P[i*3+1]-A.y,P[i*3+2]-A.z)),so=ds.slice().sort((a,b)=>a-b),thr=so[Math.floor(so.length*.75)];let cx=0,cy=0,cz=0,cn=0;
+if(idx.length<40)continue;const ds=idx.map(i=>Math.hypot(P[i*3]-A.x,P[i*3+1]-A.y,P[i*3+2]-A.z)),so=ds.slice().sort((a,b)=>a-b),thr=so[Math.floor(so.length*.75)];if(ds.filter(d=>d>.09*Hm).length<40)continue;/* a vest has no sleeve to turn */let cx=0,cy=0,cz=0,cn=0;
 idx.forEach((i,k)=>{if(ds[k]>=thr){cx+=P[i*3];cy+=P[i*3+1];cz+=P[i*3+2];cn++}});const dc=new T.Vector3(cx/cn-A.x,cy/cn-A.y,cz/cn-A.z).normalize(),ang=Math.acos(Math.max(-1,Math.min(1,dc.dot(dt))));
 if(ang<.35||ang>1.9)continue;CHZ.log.push('clothing sleeve '+(sg>0?'+x':'-x')+': arm direction is '+Math.round(ang*57.3)+' deg off the mannequin\'s ('+idx.length+' vertices)');const qf=new T.Quaternion().setFromUnitVectors(dc,dt),qi=new T.Quaternion(),q=new T.Quaternion(),v=new T.Vector3();
 for(let i=0;i<n;i++){const dx=P[i*3]-A.x,dy=P[i*3+1]-A.y,dz=P[i*3+2]-A.z,off=(P[i*3]-LM.hips.x)*sg-trunkW;if(off<=0||Math.hypot(dx,dy,dz)>.6*Hm)continue;
@@ -1114,8 +1115,8 @@ v.set(dx,dy,dz);const pr=v.dot(dc),w=Math.max(0,Math.min(1,off/(.02*Hm)))*Math.m
 return moved}
 /* ---- candidate: 'wrap' (no bones needed) ---- */
 const ORIS=[['upright',(x,y,z)=>[x,y,z]],['turned 180',(x,y,z)=>[-x,y,-z]],['Z-up',(x,y,z)=>[x,z,-y]],['Z-down',(x,y,z)=>[x,-z,y]],['X-up',(x,y,z)=>[-y,x,z]],['X-down',(x,y,z)=>[y,-x,z]]];
-function icpScale(q,N,env,s0,t0,smin,smax){const F=env.F,st=Math.max(1,Math.floor(N/800));let s=s0,t=t0.slice();
-for(let it=0;it<22;it++){const pr=[];for(let i=0;i<N;i+=st){const x=q[i*3]*s+t[0],y=q[i*3+1]*s+t[1],z=q[i*3+2]*s+t[2],c=F.nearest(x,y,z);if(c<0)continue;const dx=x-F.bx[c*3],dy=y-F.bx[c*3+1],dz=z-F.bx[c*3+2];pr.push([dx*dx+dy*dy+dz*dz,i,c])}
+function icpScale(q,N,env,s0,t0,smin,smax,iters){const F=env.F,st=Math.max(1,Math.floor(N/800));let s=s0,t=t0.slice();
+for(let it=0;it<(iters||22);it++){const pr=[];for(let i=0;i<N;i+=st){const x=q[i*3]*s+t[0],y=q[i*3+1]*s+t[1],z=q[i*3+2]*s+t[2],c=F.nearest(x,y,z);if(c<0)continue;const dx=x-F.bx[c*3],dy=y-F.bx[c*3+1],dz=z-F.bx[c*3+2];pr.push([dx*dx+dy*dy+dz*dz,i,c])}
 if(pr.length<20)break;pr.sort((a,b)=>a[0]-b[0]);const k=Math.max(20,Math.floor(pr.length*.6));let px=0,py=0,pz=0,bx=0,by=0,bz=0;for(let j=0;j<k;j++){const [,i,c]=pr[j];px+=q[i*3];py+=q[i*3+1];pz+=q[i*3+2];bx+=F.bx[c*3];by+=F.bx[c*3+1];bz+=F.bx[c*3+2]}px/=k;py/=k;pz/=k;bx/=k;by/=k;bz/=k;
 let num=0,den=0;for(let j=0;j<k;j++){const [,i,c]=pr[j];const ax=q[i*3]-px,ay=q[i*3+1]-py,az=q[i*3+2]-pz;num+=ax*(F.bx[c*3]-bx)+ay*(F.bx[c*3+1]-by)+az*(F.bx[c*3+2]-bz);den+=ax*ax+ay*ay+az*az}
 let sn=den>1e-12?num/den:s;sn=Math.max(smin,Math.min(smax,sn));s=it<5?s*.5+sn*.5:sn;t=[bx-s*px,by-s*py,bz-s*pz]}
@@ -1124,6 +1125,15 @@ let cx=0,cy=0,cz=0,cn=0;for(let i=0;i<N;i+=st){cx+=q[i*3];cy+=q[i*3+1];cz+=q[i*3
 for(let k=0;k<=28;k++){const f=.86+k*.01,s2=Math.max(smin,Math.min(smax,s*f)),t2=[wx-s2*cx,wy-s2*cy,wz-s2*cz],ds=[];for(let i=0;i<N;i+=st*2){const x=q[i*3]*s2+t2[0],y=q[i*3+1]*s2+t2[1],z=q[i*3+2]*s2+t2[2],c=F.nearest(x,y,z);if(c<0)continue;const dx=x-F.bx[c*3],dy=y-F.bx[c*3+1],dz=z-F.bx[c*3+2];ds.push(Math.abs(dx*F.bnr[c*3]+dy*F.bnr[c*3+1]+dz*F.bnr[c*3+2]-.007*Hm))}
 if(ds.length<20)continue;ds.sort((a,b)=>a-b);const m=Math.floor(ds.length*.7);let o=0;for(let j=0;j<m;j++)o+=ds[j];o/=m;if(o<bestO-1e-9){bestO=o;bestF=f}}
 const s3=Math.max(smin,Math.min(smax,s*bestF));t=[wx-s3*cx,wy-s3*cy,wz-s3*cz];s=s3;return{s,t}}
+/* Garments (vests / plate carriers especially) are often modelled for a body with different proportions. After the uniform fit, width, height and depth are
+   adjusted separately - within -30% / +30% - so the cloth hugs THIS body instead of floating in front of it. */
+function icpAniso(q,N,env,s0,t0){const F=env.F,st=Math.max(1,Math.floor(N/800)),S=[s0,s0,s0],t=t0.slice();
+for(let it=0;it<12;it++){const pr=[];for(let i=0;i<N;i+=st){const x=q[i*3]*S[0]+t[0],y=q[i*3+1]*S[1]+t[1],z=q[i*3+2]*S[2]+t[2],c=F.nearest(x,y,z);if(c<0)continue;const dx=x-F.bx[c*3],dy=y-F.bx[c*3+1],dz=z-F.bx[c*3+2];pr.push([dx*dx+dy*dy+dz*dz,i,c])}
+if(pr.length<40)return null;pr.sort((a,b)=>a[0]-b[0]);const k=Math.max(30,Math.floor(pr.length*.6)),pm=[0,0,0],bm2=[0,0,0];
+for(let j=0;j<k;j++){const [,i,c]=pr[j];for(let a=0;a<3;a++){pm[a]+=q[i*3+a];bm2[a]+=F.bx[c*3+a]}}for(let a=0;a<3;a++){pm[a]/=k;bm2[a]/=k}
+for(let a=0;a<3;a++){let num=0,den=0;for(let j=0;j<k;j++){const [,i,c]=pr[j],pa=q[i*3+a]-pm[a];num+=pa*(F.bx[c*3+a]-bm2[a]);den+=pa*pa}
+let sa=den>1e-12?num/den:S[a];sa=Math.max(s0*.7,Math.min(s0*1.3,sa));S[a]=S[a]*.5+sa*.5;t[a]=bm2[a]-S[a]*pm[a]}}
+return{S,t}}
 function staticCand(env,root,cfg,key,slot){const {bm,mb,F,F0,LM,Hm}=env;root.updateMatrixWorld(true);const sms=[];root.traverse(x=>{if(x.isMesh&&!x.isSkinnedMesh&&x.geometry&&x.geometry.attributes&&x.geometry.attributes.position&&ATF(x.geometry.attributes.position))sms.push(x)});if(!sms.length)return null;
 let N=0;sms.forEach(m=>N+=m.geometry.attributes.position.count);const gv=new Float32Array(N*3),v=new T.Vector3();let o=0;
 for(const m of sms){const pa=m.geometry.attributes.position;for(let i=0;i<pa.count;i++){v.set(pa.getX(i),pa.getY(i),pa.getZ(i)).applyMatrix4(m.matrixWorld);if(!isFinite(v.x+v.y+v.z)){CHZ.log.push('clothing '+key+': the mesh has invalid (NaN) vertices');return null}gv[(o+i)*3]=v.x;gv[(o+i)*3+1]=v.y;gv[(o+i)*3+2]=v.z}o+=pa.count}
@@ -1131,14 +1141,19 @@ const bd=slotBand(env,slot),top=slot=='legs'?LM.hips.y+.035*Hm:slot=='feet'?(LM.
 cs=cfg&&+cfg.scale>0?+cfg.scale:1;let bx0=0,by0=0,bz0=0,bc=0;for(let q=0;q<F.cand.length;q+=5){const i=F.cand[q],y=F.bx[i*3+1];if(y>=bd.cb&&y<=bd.ct){bx0+=F.bx[i*3];by0+=F.bx[i*3+1];bz0+=F.bx[i*3+2];bc++}}if(!bc)return null;bx0/=bc;bz0/=bc;
 const layer0=garmentLayer(key,slot);let best=null;const q=new Float32Array(N*3);
 for(const [oname,of] of ORIS){let y0=1e9,y1=-1e9,mx=0,mz=0;for(let i=0;i<N;i++){const r=of(gv[i*3],gv[i*3+1],gv[i*3+2]);q[i*3]=r[0];q[i*3+1]=r[1];q[i*3+2]=r[2];if(r[1]<y0)y0=r[1];if(r[1]>y1)y1=r[1];mx+=r[0];mz+=r[2]}mx/=N;mz/=N;const gh=y1-y0;if(!(gh>1e-9))continue;
-const s0=(top-bot)/gh,t0=[bx0-s0*mx,bot-s0*y0,bz0-s0*mz],ic=icpScale(q,N,env,s0,t0,s0*.55,s0*1.25);const s=ic.s*cs,t=ic.t.slice();if(cs!==1){t[0]=bx0-s*mx;t[2]=bz0-s*mz}
-t[1]+=(cfg&&+cfg.lift?+cfg.lift*Hm:0);t[2]+=(cfg&&+cfg.fwd?+cfg.fwd*Hm:0);
-const P=new Float32Array(N*3);for(let i=0;i<N*3;i+=3){P[i]=q[i]*s+t[0];P[i+1]=q[i+1]*s+t[1];P[i+2]=q[i+2]*s+t[2]}
-const vars=[[oname,P]];if(slot=='torso'){const P1=P.slice();if(sleeveRepose(P1,env)>0)vars.push([oname+', sleeves re-posed',P1])}
-/* a sideways / flipped orientation has to beat 'upright' clearly, not just by a hair */
-const sleeveGap=PP=>{let sum=0,c=0;const sg0=[1,-1];for(let i=0;i<PP.length/3;i+=3){const off=Math.abs(PP[i*3]-LM.hips.x)-env.trunkW;if(off<=.012*Hm)continue;const k=F0.nearest(PP[i*3],PP[i*3+1],PP[i*3+2]);if(k<0){sum+=.15*Hm;c++;continue}sum+=Math.hypot(PP[i*3]-F0.bx[k*3],PP[i*3+1]-F0.bx[k*3+1],PP[i*3+2]-F0.bx[k*3+2]);c++}return c>20?sum/c:0};
+const s0=(top-bot)/gh,runStart=(k,anc)=>{const sk=s0*k,tk=[bx0-sk*mx,anc=='b'?bot-sk*y0:top-sk*y1,bz0-sk*mz];return icpScale(q,N,env,sk,tk,s0*.55,s0*1.25,k==1?22:12)},
+evalIc=c=>{const PP=new Float32Array(N*3);for(let i=0;i<N*3;i+=3){PP[i]=q[i]*c.s+c.t[0];PP[i+1]=q[i+1]*c.s+c.t[1];PP[i+2]=q[i+2]*c.s+c.t[2]}if(slot=='torso')neckClamp(PP,env);return fitScoreP(PP,null,env,slot,garmentLayer(key,slot),1).score};
+/* a shirt starts well from its slot height, but a partial garment (vest, crop top, short jacket) is shorter than the slot, so several starting sizes / anchors are tried and the best kept */
+const ic0=runStart(1,'b'),sc0=evalIc(ic0);let icBest=ic0,icBestSc=sc0;if(sc0>.3&&sc0<1.6)for(const [k,anc] of [[.85,'b'],[.72,'b'],[1,'t'],[.85,'t']]){const c2=runStart(k,anc),sc2=evalIc(c2);if(sc2<icBestSc-.02){icBest=c2;icBestSc=sc2}}
+const ics=icBest===ic0?[ic0]:[ic0,icBest],lf=cfg&&+cfg.lift?+cfg.lift*Hm:0,fw=cfg&&+cfg.fwd?+cfg.fwd*Hm:0,mkP=(S,tt)=>{const P=new Float32Array(N*3);for(let i=0;i<N*3;i+=3){P[i]=q[i]*S[0]+tt[0];P[i+1]=q[i+1]*S[1]+tt[1];P[i+2]=q[i+2]*S[2]+tt[2]}return P},bases=[];
+for(const ic of ics){const s=ic.s*cs,t=ic.t.slice();if(cs!==1){t[0]=bx0-s*mx;t[2]=bz0-s*mz}t[1]+=lf;t[2]+=fw;bases.push([oname,mkP([s,s,s],t),0,ic.s]);
+if(cs===1&&icBestSc<1.6){const an=icpAniso(q,N,env,ic.s,ic.t);if(an){const dv=Math.max(Math.abs(an.S[0]/ic.s-1),Math.abs(an.S[1]/ic.s-1),Math.abs(an.S[2]/ic.s-1));if(dv>.04)bases.push([oname+', stretched to the body '+an.S.map(v=>(v/ic.s).toFixed(2)).join('/'),mkP(an.S,[an.t[0],an.t[1]+lf,an.t[2]+fw]),.05,ic.s])}}}
+const sleeveGap=PP=>{let sum=0,c=0;for(let i=0;i<PP.length/3;i+=3){const off=Math.abs(PP[i*3]-LM.hips.x)-env.trunkW;if(off<=.012*Hm)continue;const k=F0.nearest(PP[i*3],PP[i*3+1],PP[i*3+2]);if(k<0){sum+=.15*Hm;c++;continue}sum+=Math.hypot(PP[i*3]-F0.bx[k*3],PP[i*3+1]-F0.bx[k*3+1],PP[i*3+2]-F0.bx[k*3+2]);c++}return c>20?sum/c:0};
+for(const [bn,BP,prior,bs] of bases){const vars=[[bn,BP]];if(slot=='torso'){const P1=BP.slice();if(sleeveRepose(P1,env)>0)vars.push([bn+', sleeves re-posed',P1])}
+/* use the re-posed sleeves only if they clearly lie closer to the arms */
 let useVar=0;if(vars.length>1){const g0=sleeveGap(vars[0][1]),g1=sleeveGap(vars[1][1]);if(g1<g0*.9)useVar=1}
-for(let vi=0;vi<vars.length;vi++){if(vars.length>1&&vi!=useVar)continue;const [nm,PP]=vars[vi];if(slot=='torso')neckClamp(PP,env);const sc=fitScoreP(PP,null,env,slot,layer0);sc.score+=oname=='upright'?0:.3;if(!best||sc.score<best.sc.score)best={oname:nm,P:PP,sc,s}}
+const [nm,PP]=vars[useVar];if(slot=='torso')neckClamp(PP,env);const sc=fitScoreP(PP,null,env,slot,layer0,1);
+/* a sideways / flipped orientation has to beat 'upright' clearly, not just by a hair */sc.score+=prior+(oname=='upright'?0:.3);if(!best||sc.score<best.sc.score)best={oname:nm,P:PP,sc,s:bs}}
 if(best.sc.score<=FIT_GOOD)break}
 if(!best)return null;
 /* build the skinned geometry from the winning orientation */
@@ -1243,7 +1258,10 @@ spin.rotation.y=CHV.ry;try{r.render(sc,c)}catch(e){if(!CHV.rerr){CHV.rerr=1;cons
    with no gun the pose code simply lets both arms hang relaxed.) */
 function chNoGun(b){try{const gh=b.gun;if(gh&&gh.parent)gh.parent.remove(gh);b.gun=null;b.gg=null;[...b.g.children].forEach(c=>{if(c!==b.mw&&c.isGroup&&c.scale.x>1.09&&c.scale.x<1.11)b.g.remove(c)})}catch(e){console.warn('[char] no gun',e)}}
 /* small readout under the preview: which build is running + the model's materials (so a wrong look can be diagnosed from a screenshot) */
-function chDiag(){const d=hh('div','cx-diag');try{const b=CHV.b,seen=new Set(),rows=[];if(b&&b.mw)b.mw.traverse(x=>{if(!x.isMesh||!x.material)return;[].concat(x.material).forEach(m=>{if(seen.has(m))return;seen.add(m);rows.push((m.name||'?').slice(0,16)+' '+String(m.type).replace('Material','')+' map:'+(m.map?'yes':'no')+' colour:#'+(m.color?m.color.getHexString():'-')+' emissive:'+(m.emissiveIntensity!==undefined?(+m.emissiveIntensity).toFixed(2):'-')+' metal:'+(m.metalness!==undefined?(+m.metalness).toFixed(1):'-')+(m.transparent?' transparent:'+(+m.opacity).toFixed(1):'')+(m.userData&&m.userData.skinFix?'  <- skin colour fix applied':'')+(m.userData&&m.userData.swapped?'  <- red/blue swapped':''))})});d.textContent='character preview build 12 - worn on default mannequin\nlook: '+lkStr()+'\n'+(rows.length?rows.join('\n'):'(no model loaded)')+(CHZ.log.length?'\n'+CHZ.log.slice(-10).join('\n'):'')}catch(e){d.textContent='diag error: '+e.message}return d}
+function chDiagText(){try{const b=CHV.b,seen=new Set(),rows=[];if(b&&b.mw)b.mw.traverse(x=>{if(!x.isMesh||!x.material)return;[].concat(x.material).forEach(m=>{if(seen.has(m))return;seen.add(m);rows.push((m.name||'?').slice(0,16)+' '+String(m.type).replace('Material','')+' map:'+(m.map?'yes':'no')+' colour:#'+(m.color?m.color.getHexString():'-')+' emissive:'+(m.emissiveIntensity!==undefined?(+m.emissiveIntensity).toFixed(2):'-')+' metal:'+(m.metalness!==undefined?(+m.metalness).toFixed(1):'-')+(m.transparent?' transparent:'+(+m.opacity).toFixed(1):'')+(m.userData&&m.userData.skinFix?'  <- skin colour fix applied':'')+(m.userData&&m.userData.swapped?'  <- red/blue swapped':''))})});return 'character preview build 12 - worn on default mannequin\nlook: '+lkStr()+'\n'+(rows.length?rows.join('\n'):'(no model loaded)')+(CHZ.log.length?'\n'+CHZ.log.slice(-10).join('\n'):'')}catch(e){return 'diag error: '+e.message}}
+function chDiag(){const d=hh('div','cx-diag');d.textContent=chDiagText();return d}
+/* garments load asynchronously, so the panel re-reads the log shortly after anything is written to it */
+let CDT=0;function chDiagSoon(){if(CDT)return;CDT=setTimeout(()=>{CDT=0;try{const d=document.querySelector('.cx-diag');if(d)d.textContent=chDiagText()}catch(e){}},150)}
 function chBuild(){if(!CHV.spin)return;CHZ.log.length=0;if(CHV.b){CHV.spin.remove(CHV.b.g);freeBot(CHV.b);CHV.b=null}if(!(MD.chars&&MD.chars.length))return;
 const gk=PRI[L.pri];MPO.mkl=lkStr();MPO.mkg=MD[gk]?gk:undefined;let b=null;try{b=mkBot(0,1)}catch(e){console.warn('[char] preview',e)}finally{MPO.mkl=MPO.mkg=undefined}
 if(!b)return;if(b.tag)b.g.remove(b.tag);
