@@ -413,6 +413,7 @@ button.pm-tab.on{background:#f2f2f2;color:#0b0d10;border-color:#fff}
 .cxi i{display:grid;place-items:center;aspect-ratio:1;max-height:130px;width:100%;overflow:hidden;background:#0f1317 center/cover no-repeat;font-style:normal;font-size:28px;color:#58616a}
 .cxi span{display:block;padding:5px 6px;font-size:10px;letter-spacing:.1em;text-transform:uppercase;color:#aeb4ba;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;text-align:center}
 .cxi:hover{transform:translateY(-4px);border-color:#8b9298}.cxi.on{border-color:#fff;background:#f2f2f2}.cxi.on span{color:#0b0d10;font-weight:700}
+.cxi b.cxrf{position:absolute;top:3px;right:3px;z-index:2;width:22px;height:22px;display:grid;place-items:center;border-radius:50%;background:#111519;color:#ffd75e;border:1px solid #58616a;font-size:13px;font-weight:400;cursor:pointer}.cxi b.cxrf:hover{background:#ffd75e;color:#111519;border-color:#ffd75e}
 .cxrow{display:flex;gap:10px;align-items:center}
 .cxrow input[type=color]{width:54px;height:38px;padding:0;border:1px solid #3a4148;background:none;cursor:pointer}
 #main .cxbtn{margin:0;border:1px solid #3a4148;border-radius:0;background:rgba(255,255,255,.05);color:#cfd3d6;padding:10px 18px;font-size:12px;font-weight:700;letter-spacing:.16em;text-transform:uppercase}
@@ -928,6 +929,14 @@ function cutTris(ix,groups,drop){const grs=(groups&&groups.length)?groups:[{star
 for(const g of grs){const st=out.length;for(let k=g.start;k+2<g.start+g.count;k+=3){const a=ix.getX(k),b=ix.getX(k+1),c=ix.getX(k+2);tot++;if(drop(a,b,c)){dr++;continue}out.push(a,b,c)}og.push({start:st,count:out.length-st,materialIndex:g.materialIndex,w:g.w})}
 return{out,og:og.filter(g=>!g.w),tot,dr}}
 const RGC={},STC={},BFC={};let SDRC=null;
+/* USER REFIT PREFERENCES: per-item fit override, picked in the character menu (the small yellow
+   arrow badge on a worn clothing tile). REFIT[key]='Z-up 90' forces exactly that orientation for
+   the wrap fit (staticCand puts it alone in the candidate list), survives rebuilds and sessions
+   via localStorage, and bypasses the auto score gate - the user's click wins over the heuristics.
+   This is the escape hatch that keeps NEW store assets fixable in-game WITHOUT sending anyone
+   files: if the auto-fit ever picks a wrong orientation for an unseen asset, two taps fix it. */
+const REFIT=(()=>{try{return JSON.parse(localStorage.getItem('chrefit')||'{}')}catch(e){}})()||{};
+const refitSave=()=>{try{localStorage.setItem('chrefit',JSON.stringify(REFIT))}catch(e){}};
 /* MEMORY: one Draco decoder for every model (a new one per file spawned its own workers + wasm), and the fitted-clothing caches are capped */
 function sharedDraco(){if(!SDRC){SDRC=new T.DRACOLoader();try{SDRC.setWorkerLimit(1)}catch(e){}}return SDRC}
 const CKEYS=[];function cacheSet(C,k,v,max){if(!(k in C)){CKEYS.push([C,k]);while(CKEYS.length>max){const [c0,k0]=CKEYS.shift(),o=c0[k0];delete c0[k0];try{if(o&&o.geo&&o.geo.dispose)o.geo.dispose();if(o&&o.items)o.items.forEach(it=>it.geo&&it.geo.dispose())}catch(e){}}}C[k]=v;return v}
@@ -1240,7 +1249,8 @@ const layer0=garmentLayer(key,slot);let best=null;const q=new Float32Array(N*3);
    A mediocre 'upright' result no longer ends the search: a vest modelled sideways used to
    be squashed onto the chest by the aniso stretch and its 0.3-0.9 score short-circuited
    the loop before its real orientation was ever tried. */
-const cands=ORIS.concat(pcaOris(gv,N)).map(o=>({name:o.name,m:o.m}));
+let cands=ORIS.concat(pcaOris(gv,N)).map(o=>({name:o.name,m:o.m}));
+const FORCED=cfg&&cfg.ori&&cfg.ori!=='auto'?String(cfg.ori):null;/* user refit pick (see REFIT): exactly this orientation, nothing else */if(FORCED){const fc=cands.find(c=>c.name===FORCED);if(fc)cands=[fc];else CHZ.log.push('clothing '+key+': refit "'+FORCED+'" unknown - fitting auto')}
 const fillQ=m=>{let y0=1e9,y1=-1e9,mx=0,mz=0;for(let i=0;i<N;i++){const x=gv[i*3],y=gv[i*3+1],z=gv[i*3+2],qx=m[0]*x+m[1]*y+m[2]*z,qy=m[3]*x+m[4]*y+m[5]*z,qz=m[6]*x+m[7]*y+m[8]*z;q[i*3]=qx;q[i*3+1]=qy;q[i*3+2]=qz;if(qy<y0)y0=qy;if(qy>y1)y1=qy;mx+=qx;mz+=qz}mx/=N;mz/=N;return{y0,y1,mx,mz,gh:y1-y0}};
 /* lean of the MAPPED (pre-ICP) cloud: an axis mapping that leaves the garment tilted keeps
    the tilt after fitting (ICP only translates/scales), and the wrapped mass hides it - so the
@@ -1316,7 +1326,7 @@ const wname=best?best.oname.split(',')[0]:null,wbase=wname?cands.find(c=>c.name=
 /* RESIDUAL-TILT POLISH: an axis mapping that leaves a posed garment leaning keeps the lean
    after fitting (ICP never rotates). The lean angle is IN the covariance cross-terms of the
    mapped cloud, so the corrective rotation is known in closed form - apply it and refit. */
-if(best&&wbase&&wbase.m&&(tilt>.12||(best.sc.score>.55&&!wname.startsWith('PCA')))){
+if(best&&wbase&&wbase.m&&!FORCED&&(tilt>.12||(best.sc.score>.55&&!wname.startsWith('PCA')))){
 const sxy=(()=>{const St=Math.max(1,Math.floor(N/400)),cn2=Math.ceil(N/St);const g=fillQ(wbase.m);let mx=0,my=0,mz=0;for(let i=0;i<N;i+=St){mx+=q[i*3];my+=q[i*3+1];mz+=q[i*3+2]}mx/=cn2;my/=cn2;mz/=cn2;let a=0,b=0,yy=0;for(let i=0;i<N;i+=St){const ax=q[i*3]-mx,ay=q[i*3+1]-my,az=q[i*3+2]-mz;a+=ax*ay;b+=az*ay;yy+=ay*ay}return[Math.atan2(a/cn2,yy/cn2||1e-9),Math.atan2(b/cn2,yy/cn2||1e-9)]})();
 const thZ=sxy[0],thX=sxy[1],corr=(dz,dx)=>mmul(ROTX(dx),mmul(ROTZ(dz),wbase.m));
 /* the covariance angle UNDERESTIMATES the true lean (pouches / straps skew the mass), so sweep
@@ -1361,6 +1371,7 @@ g2.computeBoundingSphere();g2.computeBoundingBox();items.push({src:m,geo:g2})}
 return{items,kind:'wrap ('+best.oname+', scale '+best.s.toFixed(3)+', '+pushed+' verts pushed out of the skin)'}}
 /* ---- the entry point (called by attachAcc) ---- */
 function wrapSkinned(b,mw,root,cfg,key){try{cfg=cfg||{};const slot=accSlot(key,cfg),clothing=/^(torso|legs|feet)$/.test(slot),env=fitEnv(b,mw,clothing?slot:'torso');if(!env)return false;
+const FORCED=cfg.ori&&cfg.ori!=='auto'?String(cfg.ori):null;/* a user-forced orientation is worn regardless of score - it must never blank the item */
 const {bm}=env;b.g.updateMatrixWorld(true);root.updateMatrixWorld(true);const body=skinBox(mw),H=body.max.y-body.min.y;if(!(H>.5))return false;const lim=body.clone().expandByScalar(H*.15);
 const gmsA=[];root.traverse(x=>{if(x.isSkinnedMesh&&x.skeleton&&x.geometry&&x.geometry.attributes.skinIndex&&x.geometry.attributes.skinWeight)gmsA.push(x)});
 const gmsJ=gmsA.filter(x=>!junkNamed(x)),gmsJN=gmsA.length-gmsJ.length,gms=gmsJ.length?gmsJ:gmsA;/* a skinned dummy mannequin in the file must not be retargeted as if it were the outfit */
@@ -1369,16 +1380,16 @@ if(hit){pick=hit;CHZ.log.push(...hit.log)}
 else{if(gmsJN)CHZ.log.push('clothing '+key+': skipped '+gmsJN+' dummy/display part'+(gmsJN>1?'s':'')+' (skinned)');const l0=CHZ.log.length,cands=[],tried=[],consider=(c,label)=>{if(!c)return null;const r=itemsScore(c.items,env,slot,garmentLayer(key,slot));c.score=r.score;c.txt=r.txt;c.label=label||c.kind;tried.push(c.label.split(' (')[0]+' '+r.score.toFixed(2));cands.push(c);return c};
 let good=null;
 if(!clothing){if(!gms.length)return false;for(const mode of ['body','retarget']){const c=riggedCand(env,gms,key,mode,H);if(c){c.score=0;c.txt='';c.label=mode;cands.push(c);break}}}
-else if(gms.length){for(const mode of ['body','retarget']){const c=consider(riggedCand(env,gms,key,mode,H),mode);if(c&&c.score<=FIT_GOOD){good=c;break}}}
+else if(gms.length&&!FORCED){/* user-forced orientation: wrap-only, the retarget guess is skipped so the pick is honoured exactly */for(const mode of ['body','retarget']){const c=consider(riggedCand(env,gms,key,mode,H),mode);if(c&&c.score<=FIT_GOOD){good=c;break}}}
 if(clothing&&!good){let sc=null;try{sc=staticCand(env,gms.length?bakeSkinned(root):root,cfg,key,slot)}catch(e){CHZ.log.push('clothing '+key+': wrap fit error '+e.message)}consider(sc)}
 cands.sort((a,c)=>a.score-c.score);const win=cands[0];
-const limit=FIT_MAX+garmentLayer(key,slot)*.5;if(!win||(clothing&&!(win.score<=limit))){/* only clothing has a fit gate to fail: for props (glasses, hats...) this line was pure noise - the rigid fit that follows logs its own outcome */if(clothing)CHZ.log.push('clothing '+key+' ('+slot+') NOT worn - no fit was good enough ('+(tried.join(', ')||'no candidate')+', limit '+limit.toFixed(1)+')'+(win?' ['+win.txt+']':''));cands.forEach(c=>c.items.forEach(it=>{if(it.geo&&!RGC_has(it.geo))it.geo.dispose&&it.geo.dispose()}));return false}
+const limit=FIT_MAX+garmentLayer(key,slot)*.5;if(!win||(clothing&&!FORCED&&!(win.score<=limit))){/* only clothing has a fit gate to fail: for props (glasses, hats...) this line was pure noise - the rigid fit that follows logs its own outcome */if(clothing)CHZ.log.push('clothing '+key+' ('+slot+') NOT worn - no fit was good enough ('+(tried.join(', ')||'no candidate')+', limit '+limit.toFixed(1)+')'+(win?' ['+win.txt+']':''));cands.forEach(c=>c.items.forEach(it=>{if(it.geo&&!RGC_has(it.geo))it.geo.dispose&&it.geo.dispose()}));return false}
 const line='clothing '+key+' ('+slot+') fitted by '+win.label+' - score '+win.score.toFixed(2)+' ['+win.txt+']'+(tried.length>1?' | tried: '+tried.join(', '):'');CHZ.log.push(line);
 const own=CHZ.log.slice(l0);pick=cacheSet(STC,ck,{items:win.items,log:own},10)}
 const LY=garmentLayer(key,slot),wr=new T.Group();wr.position.copy(bm.position);wr.quaternion.copy(bm.quaternion);wr.scale.copy(bm.scale);
 for(const it of pick.items){const mats=[].concat(it.src.material).map(q=>clothMat(q,LY,b.tint)),sm=new T.SkinnedMesh(it.geo,Array.isArray(it.src.material)?mats:mats[0]);sm.frustumCulled=false;sm.renderOrder=LY;sm.name=it.src.name;sm.userData.accWrap=1;/* tagged: the mannequin must never mistake a worn garment for the body when measuring */sm.bind(new T.Skeleton(bm.skeleton.bones.slice(),bm.skeleton.boneInverses.map(q=>q.clone())),bm.bindMatrix.clone());wr.add(sm)}
 bm.parent.add(wr);b.g.updateMatrixWorld(true);const gbx=skinBox(wr),sz=gbx.getSize(new T.Vector3());
-if(isFinite(sz.y)&&sz.y>H*.08&&lim.clone().expandByScalar(H*.02).containsBox(gbx)){/* 2% slack: a re-posed sleeve tip may poke 1-2cm past the 15% margin - that is wearable, and rejecting the whole garment for it left shirts invisible */(b.accs=b.accs||{})[key||'?']=wr;wrapClear(b,key||'?',LY);return true}
+if(isFinite(sz.y)&&sz.y>H*.08&&(FORCED||lim.clone().expandByScalar(H*.02).containsBox(gbx))){/* 2% slack: a re-posed sleeve tip may poke 1-2cm past the 15% margin - that is wearable, and rejecting the whole garment for it left shirts invisible */(b.accs=b.accs||{})[key||'?']=wr;wrapClear(b,key||'?',LY);return true}
 bm.parent.remove(wr);{/* keep the numbers: which axis/limit failed is not guessable from the size alone */const d=lim.min.clone(),e2=lim.max.clone();CHZ.log.push('clothing '+key+' rejected after fitting: result '+sz.x.toFixed(2)+' x '+sz.y.toFixed(2)+' x '+sz.z.toFixed(2)+' is outside the body (height '+H.toFixed(2)+', allowed x '+d.x.toFixed(2)+'..'+e2.x.toFixed(2)+' y '+d.y.toFixed(2)+'..'+e2.y.toFixed(2)+', got x '+gbx.min.x.toFixed(2)+'..'+gbx.max.x.toFixed(2)+' y '+gbx.min.y.toFixed(2)+'..'+gbx.max.y.toFixed(2)+')')}
 delete STC[ck];return false}catch(e){CHZ.log.push('clothing error: '+e.message);console.warn('[char] wrap clothing',e);return false}}
 const RGC_has=g=>Object.values(RGC).some(v=>v&&v.geo===g);
@@ -1451,8 +1462,9 @@ else CHZ.log.push('clothing '+key+' ('+slot+') rigid-fit placed: size '+gs.x.toF
 function applyLook(b,mw,str){try{const [o,a,t,bd]=String(str||'').split('|'),ou=!b.cbody&&o&&STORE.out.find(x=>x.key==o),tint=/^#[0-9a-f]{6}$/i.test(t||'')?t:'';b.tint=tint;
 mw.traverse(x=>{if(!x.isMesh||!x.material)return;const arr=Array.isArray(x.material),nm=(arr?x.material:[x.material]).map(m0=>{const m=m0.clone();if(ou&&m.map){m.map=lookTex(ou.url,m.map,x,isTopCloth(ou.key,STORE.cfg['o:'+ou.key]));if(m.emissiveMap)m.emissiveMap=m.map}if(tint)m.color=new T.Color(tint);m.needsUpdate=true;return m});x.material=arr?nm:nm[0]});
 /* accessories: up to 4 at once, keys separated by commas (shirt + pants + hat ...) */
-String(a||'').split(',').filter(Boolean).slice(0,4).forEach(k=>{const ac=STORE.acc.find(x=>x.key==k);if(ac)loadAcc(ac).then(r=>{if(r&&b.mw&&mw.parent)attachAcc(b,mw,r,STORE.cfg['a:'+k]||{},k)})});
-String(bd||'').split(',').filter(Boolean).slice(0,6).forEach(k=>{const gb=STORE.bod.find(x=>x.key==k);if(gb&&isGarmentBody(gb))loadAcc(gb).then(r=>{if(r&&b.mw&&mw.parent)attachAcc(b,mw,r,STORE.cfg['b:'+gb.key]||{},'b:'+gb.key)})})}catch(e){console.warn('[char] look',e)}}
+const rfC=(p,k)=>{const v=REFIT[p+k];return v&&v!='auto'?Object.assign({},STORE.cfg[p+k]||{},{ori:v}):STORE.cfg[p+k]||{}};/* refit pref rides in cfg: reaches staticCand as cfg.ori AND gets its own cache key */
+String(a||'').split(',').filter(Boolean).slice(0,4).forEach(k=>{const ac=STORE.acc.find(x=>x.key==k);if(ac)loadAcc(ac).then(r=>{if(r&&b.mw&&mw.parent)attachAcc(b,mw,r,rfC('a:',k),k)})});
+String(bd||'').split(',').filter(Boolean).slice(0,6).forEach(k=>{const gb=STORE.bod.find(x=>x.key==k);if(gb&&isGarmentBody(gb))loadAcc(gb).then(r=>{if(r&&b.mw&&mw.parent)attachAcc(b,mw,r,rfC('b:',gb.key),'b:'+gb.key)})})}catch(e){console.warn('[char] look',e)}}
 /* Character preview: its own little renderer, drag to rotate */
 const CHV={};
 function chInit(){if(CHV.ren)return;const r=new T.WebGLRenderer({antialias:true,alpha:true});r.setPixelRatio(Math.min(window.devicePixelRatio||1,1.25));
@@ -1471,7 +1483,7 @@ spin.rotation.y=CHV.ry;try{r.render(sc,c)}catch(e){if(!CHV.rerr){CHV.rerr=1;cons
    with no gun the pose code simply lets both arms hang relaxed.) */
 function chNoGun(b){try{const gh=b.gun;if(gh&&gh.parent)gh.parent.remove(gh);b.gun=null;b.gg=null;[...b.g.children].forEach(c=>{if(c!==b.mw&&c.isGroup&&c.scale.x>1.09&&c.scale.x<1.11)b.g.remove(c)})}catch(e){console.warn('[char] no gun',e)}}
 /* small readout under the preview: which build is running + the model's materials (so a wrong look can be diagnosed from a screenshot) */
-function chDiagText(){try{const b=CHV.b,seen=new Set(),rows=[];if(b&&b.mw)b.mw.traverse(x=>{if(!x.isMesh||!x.material)return;[].concat(x.material).forEach(m=>{if(seen.has(m))return;seen.add(m);rows.push((m.name||'?').slice(0,16)+' '+String(m.type).replace('Material','')+' map:'+(m.map?'yes':'no')+' colour:#'+(m.color?m.color.getHexString():'-')+' emissive:'+(m.emissiveIntensity!==undefined?(+m.emissiveIntensity).toFixed(2):'-')+' metal:'+(m.metalness!==undefined?(+m.metalness).toFixed(1):'-')+(m.transparent?' transparent:'+(+m.opacity).toFixed(1):'')+(m.userData&&m.userData.skinFix?'  <- skin colour fix applied':'')+(m.userData&&m.userData.swapped?'  <- red/blue swapped':''))})});return 'character preview build 18 - worn on default mannequin\nlook: '+lkStr()+'\n'+(rows.length?rows.join('\n'):'(no model loaded)')+(CHZ.log.length?'\n'+CHZ.log.slice(-10).join('\n'):'')}catch(e){return 'diag error: '+e.message}}
+function chDiagText(){try{const b=CHV.b,seen=new Set(),rows=[];if(b&&b.mw)b.mw.traverse(x=>{if(!x.isMesh||!x.material)return;[].concat(x.material).forEach(m=>{if(seen.has(m))return;seen.add(m);rows.push((m.name||'?').slice(0,16)+' '+String(m.type).replace('Material','')+' map:'+(m.map?'yes':'no')+' colour:#'+(m.color?m.color.getHexString():'-')+' emissive:'+(m.emissiveIntensity!==undefined?(+m.emissiveIntensity).toFixed(2):'-')+' metal:'+(m.metalness!==undefined?(+m.metalness).toFixed(1):'-')+(m.transparent?' transparent:'+(+m.opacity).toFixed(1):'')+(m.userData&&m.userData.skinFix?'  <- skin colour fix applied':'')+(m.userData&&m.userData.swapped?'  <- red/blue swapped':''))})});return 'character preview build 19 - worn on default mannequin\nlook: '+lkStr()+'\n'+(rows.length?rows.join('\n'):'(no model loaded)')+(CHZ.log.length?'\n'+CHZ.log.slice(-10).join('\n'):'')}catch(e){return 'diag error: '+e.message}}
 function chDiag(){const d=hh('div','cx-diag');d.textContent=chDiagText();return d}
 /* garments load asynchronously, so the panel re-reads the log shortly after anything is written to it */
 let CDT=0;function chDiagSoon(){if(CDT)return;CDT=setTimeout(()=>{CDT=0;try{const d=document.querySelector('.cx-diag');if(d)d.textContent=chDiagText()}catch(e){}},150)}
@@ -1503,17 +1515,22 @@ const wrap=hh('div','cx'),top=hh('div','cx-top','<h2>CHARACTER</h2><span>Customi
 if(c)top.append(hh('div','cr crv','◈ '+nCr(c.coins)+' credits'));
 if(!c){side.append(hh('p','','Log in to customise your character.'));wrap.append(top,pv,side);root.append(wrap);return}
 const lk=lkGet(),pick=(k,v)=>{lk[k]=v;chBuild();chRender();lkSave()};
+/* REFIT badge: on every WORN clothing tile - cycles the fit orientation for that one item and
+   remembers it. Answers "this new asset sits wrong" without any files being sent anywhere. */
+const RF_CYC=['auto'].concat(ORIS.map(o=>o.name)),refitBadge=(k)=>{const b2=hh('b','cxrf','\u21bb');b2.title='Fit looks wrong? Tap to try the next fitting orientation for this item (your pick is saved)';b2.onclick=e=>{e.stopPropagation();const i=Math.max(0,RF_CYC.indexOf(REFIT[k]||'auto')),nx=RF_CYC[(i+1)%RF_CYC.length];if(nx=='auto')delete REFIT[k];else REFIT[k]=nx;refitSave();CH.msg=(nx=='auto'?'Fit reset to auto':'Fit orientation: '+nx)+' - tap the arrow again until the item sits right';chBuild();chRender()};return b2};
 const grid=(items,cur,key,glyph)=>{const g=hh('div','cxg');items.forEach(([val,name,img])=>{const d=hh('div','cxi'+(cur==val?' on':''),'<i>'+(img?'':glyph)+'</i><span></span>');d.querySelector('span').textContent=name;if(img)d.firstChild.style.backgroundImage='url("'+img+'")';d.onclick=()=>pick(key,val);if(key=='outfit')otTile(d,val);g.append(d)});return g};
 const outs=[['','Default',''],...STORE.out.filter(x=>owns('o:'+x.key)).map(x=>[x.key,x.name,''])],accs=[['','None',''],...STORE.acc.filter(x=>owns('a:'+x.key)).map(x=>[x.key,x.name,''])];
 const bods=[['','Default',''],...STORE.bod.filter(x=>owns('b:'+x.key)).map(x=>[x.key,x.name,''])],cust=!!bodyFor(lkStr());
 if(STORE.bod.length){const bsel=String(lk.body||'').split(',').filter(Boolean),bgd=hh('div','cxg'),isG=v=>{const x=STORE.bod.find(y=>y.key==v);return !!x&&isGarmentBody(x)};
 bods.forEach(([val,name])=>{const d=hh('div','cxi'+((val?bsel.includes(val):!bsel.length)?' on':''),'<i>'+(val?'🕴️':'')+'</i><span></span>');d.querySelector('span').textContent=name;
+if(val&&bsel.includes(val)&&isG(val)&&/^(torso|legs|feet)$/.test(accSlot('b:'+val,{})))d.append(refitBadge('b:'+val));
 d.onclick=()=>{let n;if(!val)n=[];else if(bsel.includes(val))n=bsel.filter(x=>x!=val);else n=isG(val)?[...bsel.filter(q=>!sameSlot('b',q,'b',val)),val]:[...bsel.filter(isG),val];if(val&&isG(val))lk.acc=String(lk.acc||'').split(',').filter(Boolean).filter(q=>!sameSlot('a',q,'b',val)).join(',');pick('body',[...n.filter(x=>!isG(x)).slice(-1),...n.filter(isG).slice(-4)].join(','))};bgd.append(d)});
 side.append(hh('h3','','Body skin & clothing'),hh('p','','Tap to put on or take off. Clothing stacks (shirt + pants + vest...); only one full body skin at a time.'),bgd)}
 
 if(cust)side.append(hh('h3','','Outfit'),hh('p','','Outfits are painted for the default body. Set Body skin back to Default to use one.'));else side.append(hh('h3','','Outfit'),grid(outs,lk.outfit,'outfit','👤'));
 const accSel=String(lk.acc||'').split(',').filter(Boolean),ag=hh('div','cxg');
 accs.forEach(([val,name])=>{const d=hh('div','cxi'+((val?accSel.includes(val):!accSel.length)?' on':''),'<i>'+(val?'🎩':'')+'</i><span></span>');d.querySelector('span').textContent=name;
+if(val&&accSel.includes(val)&&/^(torso|legs|feet)$/.test(accSlot(val,{})))d.append(refitBadge(val));
 d.onclick=()=>{let n=[];if(val){n=accSel.includes(val)?accSel.filter(x=>x!=val):[...accSel.filter(q=>!sameSlot('a',q,'a',val)),val];if(n.length>4)n=n.slice(-4);if(!accSel.includes(val))lk.body=String(lk.body||'').split(',').filter(Boolean).filter(q=>!sameSlot('b',q,'a',val)).join(',')}pick('acc',n.join(','))};ag.append(d)});
 side.append(hh('h3','','Accessories'),hh('p','','Tap to put on or take off. You can wear up to 4 at once, e.g. a shirt, pants and a hat.'),ag);
 if(outs.length<2&&accs.length<2&&bods.length<2)side.append(hh('p','','You don\'t own any outfits, accessories or body skins yet. Earn credits by playing, then pick some up in the Store.'));
