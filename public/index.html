@@ -887,6 +887,30 @@ const [x0,x1]=ax(0),[y0,y1]=ax(1),[z0,z1]=ax(2);return new T.Box3(new T.Vector3(
 function rimBand(obj){try{obj.updateMatrixWorld(true);const ys=[],v=new T.Vector3();obj.traverse(x=>{if(!x.isMesh||!x.geometry||!x.geometry.attributes.position)return;const pa=x.geometry.attributes.position,st=Math.max(1,Math.floor(pa.count/2000));for(let i=0;i<pa.count;i+=st){v.fromBufferAttribute(pa,i).applyMatrix4(x.matrixWorld);ys.push(v.y)}});if(ys.length<24)return null;ys.sort((a,b)=>a-b);
 const lo=ys[Math.floor(ys.length*.08)],hi=ys[Math.floor(ys.length*.55)],B=18,h=(hi-lo)/B;if(!(h>1e-9))return null;const cnt=new Array(B).fill(0);for(let i=0;i<ys.length;i++){const y=ys[i];if(y<lo||y>hi)continue;const b2=Math.min(B-1,Math.floor((y-lo)/h));cnt[b2]++}
 let bi=0;for(let i=1;i<B;i++)if(cnt[i]>cnt[bi])bi=i;if(!cnt[bi])return null;return lo+bi*h}catch(e){return null}}
+/* STRUCTURAL rim for hats: the shell's bottom edge is the widest RING of the whole prop.
+   rimBand above finds the rim by vertex DENSITY - but a smooth shell (no pile-up of verts along its bottom
+   edge) lets the density search latch onto whatever hangs BELOW the rim instead: loose chin straps, cable
+   clusters, a mic boom, a display-stand pole. That drags the anchor deep down and lifts the whole helmet
+   off the head. rimScan finds the rim by SHAPE instead: a rim band is wide (>=62% of the prop's widest
+   point), covers most directions around the axis (a strap cluster only reaches forward; a dummy head or
+   stand base is solid, its centre is full) and is populated. Used by attachAcc as a tiebreak only. */
+function rimScan(obj){try{
+if(!obj)return null;obj.updateMatrixWorld(true);
+const pd=[],v=new T.Vector3();
+obj.traverse(x=>{if(!x.isMesh||!x.geometry||!x.geometry.attributes.position)return;const pa=x.geometry.attributes.position,st=Math.max(1,Math.floor(pa.count/1200));for(let i=0;i<pa.count;i+=st){v.fromBufferAttribute(pa,i).applyMatrix4(x.matrixWorld);if(isFinite(v.x+v.y+v.z))pd.push(v.x,v.y,v.z)}});
+const n=pd.length/3;if(n<80)return null;let bestY=null,bestFar=0;
+const ys=[];for(let i=0;i<n;i++)ys.push(pd[i*3+1]);ys.sort((a,b)=>a-b);
+const yLo=ys[Math.floor(n*.05)],yHi=ys[Math.floor(n*.75)];if(!(yHi>yLo+1e-6))return null;/* p75 not p60: when most of the file's mass hangs BELOW the rim (loose straps, cables), the rim ring sits at ~p60 and a p60 cut lands exactly ON it - the rim is then excluded from its own scan */
+let ax=0,az=0;for(let i=0;i<n;i++){ax+=pd[i*3];az+=pd[i*3+2]}ax/=n;az/=n;
+const tmp=[];for(let i=0;i<n;i++){const y=pd[i*3+1];if(y<yLo||y>yHi)continue;const dx=pd[i*3]-ax,dz=pd[i*3+2]-az;tmp.push([y,Math.atan2(dz,dx),Math.hypot(dx,dz)])}
+const B=24,h=(yHi-yLo)/B,cnt=new Array(B).fill(0),far=new Array(B).fill(0),nr=new Array(B).fill(0),sec=[];for(let i=0;i<B;i++)sec.push([0,0,0,0,0,0,0,0]);
+tmp.forEach(t=>{const b2=Math.min(B-1,Math.floor((t[0]-yLo)/h));cnt[b2]++;if(t[2]>far[b2])far[b2]=t[2]});
+const mx=Math.max.apply(null,far)||1e-9;
+tmp.forEach(t=>{const b2=Math.min(B-1,Math.floor((t[0]-yLo)/h));if(t[2]>mx*.55){const s2=Math.floor(((t[1]+Math.PI)/(2*Math.PI))*8)%8;sec[b2][s2]++}if(t[2]<far[b2]*.35)nr[b2]++});
+for(let b2=0;b2<B;b2++){const cov=sec[b2].filter(c=>c>=2).length;
+if(far[b2]>=mx*.62&&cnt[b2]>=Math.max(6,Math.floor(n/280))&&nr[b2]<=Math.max(2,Math.ceil(cnt[b2]*.2))&&cov>=6){
+if(far[b2]>bestFar){bestFar=far[b2];bestY=yLo+(b2+.5)*h}/* the rim is the WIDEST ring of the prop (earcups may sit a hair lower - that is still the rim line); a narrower ring higher up (an internal harness, a dummy cranium) must not win */}}
+return bestY===null?null:bestY}catch(e){return null}}
 function fitMeasure(b,mw){if(b.fit)return b.fit;
 const bones=[];mw.traverse(x=>{if(x.isBone)bones.push(x)});const nk=x=>x.name.toLowerCase().replace(/[^a-z]/g,'');
 const head=bones.find(x=>/head$/.test(nk(x))),top=bones.find(x=>/headtop/.test(nk(x))),neck=bones.find(x=>/neck$/.test(nk(x))),spine=bones.filter(x=>/spine/.test(nk(x))),spineTop=spine.length?spine.reduce((p,c)=>nk(c)>nk(p)?c:p):null;
@@ -1437,8 +1461,8 @@ const wrap=new T.Group();wrap.add(inner);if(cfg.flip)wrap.rotation.y=Math.PI;wra
 const bx=new T.Box3().setFromObject(wrap),sz=bx.getSize(new T.Vector3()),ct=bx.getCenter(new T.Vector3());if(!(sz.x>1e-6&&sz.y>1e-6&&sz.z>1e-6))return;
 const S=Math.max(.2,Math.min(3,+cfg.scale||1)),lift=+cfg.lift||0,fwd=+cfg.fwd||0,mn=(...a)=>Math.min(...a.filter(x=>isFinite(x)&&x>0));
 let f,cx=hc.x,cy,cz=hc.z,parent=F.head;const front=hb.max.z-hs.z*.05;
-if(slot=='glasses'){f=mn(hs.x*1.04*S/sz.x,hs.y*.5*S/sz.y,hs.z*1.5*S/sz.z);cy=hb.max.y-hs.y*.45;cz=front-sz.z*f/2+.015}
-else if(slot=='mask'){f=mn(hs.x*1.08*S/sz.x,hs.y*.65*S/sz.y,hs.z*1.4*S/sz.z);cy=hb.min.y+hs.y*.38;cz=front-sz.z*f/2+.02}
+if(slot=='glasses'){f=mn(hs.x*1.04*S/sz.x,hs.y*.5*S/sz.y,hs.z*1.5*S/sz.z);cy=hb.max.y-hs.y*.45;cz=hb.max.z-hs.z*.13-sz.z*f/2+.012/* anchor by the FRONT of the frame, ~1.5cm behind the nose tip: centring the whole box on the nose put the lenses of a temple-style model clear off the face (floating in front of it) */}
+else if(slot=='mask'){f=mn(hs.x*1.08*S/sz.x,hs.y*.65*S/sz.y,hs.z*1.4*S/sz.z);cy=hb.min.y+hs.y*.38;cz=hb.max.z-hs.z*.10-sz.z*f/2+.015}
 else if(slot=='ears'){f=mn(hs.x*1.16*S/sz.x,hs.y*1.35*S/sz.y,hs.z*1.5*S/sz.z);cy=hc.y+hs.y*.08}
 else if(slot=='neck'){f=mn(hs.x*1.35*S/sz.x,hs.y*.7*S/sz.y,hs.z*1.9*S/sz.z);cy=hb.min.y+sz.y*f*.1;cz=hc.z-hs.z*.1;parent=F.neck||F.head}
 else if(slot=='torso'){/* size off HEIGHT only: a rest pose with arms held out sideways (common in these rigged exports) makes the garment's
@@ -1452,7 +1476,11 @@ else{/* hat / helmet, sized and anchored on ROBUST (percentile) boxes: a helmet 
    (a bowl is a bit deeper than the head; side bits like ear cups are allowed to overhang), caps by width as before. Anchor: the robust BOTTOM (the rim, where the
    vertex mass is) sits at the crown minus a sink, so a deep bowl wraps the crown and a shallow cap still just sits on top. */
 const isHelm=/helm|hardhat|hard ?hat/i.test(key),rb=robustBox(wrap,3,97),rbA=robustBox(wrap,12,90);
-const rsz=rb?rb.getSize(new T.Vector3()):sz.clone(),rct=rb?rb.getCenter(new T.Vector3()):ct.clone(),rlo=rimBand(wrap)!==null?rimBand(wrap):(rbA?rbA.min.y:ct.y-sz.y/2);/* rim = densest band, not the percentile bottom: a chin strap below the rim used to drag the anchor down and LIFT the whole helmet off the head */
+const rsz=rb?rb.getSize(new T.Vector3()):sz.clone(),rct=rb?rb.getCenter(new T.Vector3()):ct.clone();
+let rlo=rimBand(wrap);const rSA=rimScan(wrap);/* rim anchor = densest band by default. OVERRULED when the densest band has latched onto stray mass that hangs BELOW the shell (loose chin straps, cable clusters, a stand pole) and the structural scan found the shell's own rim ring higher up - which seats the helmet instead of lifting it off the head */
+if(rlo===null)rlo=rbA?rbA.min.y:ct.y-sz.y/2;
+if(rSA!==null&&rSA>rlo+.04){CHZ.log.push('clothing '+key+': rim re-anchored from the structural ring (the density band had latched onto stray mass below the shell)');rlo=rSA}
+if(rlo<ct.y-sz.y*.48)rlo=rbA?rbA.min.y:ct.y-sz.y/2;
 if(!(rsz.x>1e-6&&rsz.y>1e-6&&rsz.z>1e-6)){rsz.copy(sz);rct.copy(ct)}
 f=isHelm?mn(hs.z*1.3*S/rsz.z,hs.x*1.9*S/rsz.x,hs.y*2.4*S/rsz.y):mn(hs.x*1.14*S/rsz.x,hs.y*1.6*S/rsz.y,hs.z*1.4*S/rsz.z);
 const sink=isHelm?Math.min(hs.y*.30,rsz.y*f*.5):hs.y*.1;
@@ -1472,7 +1500,8 @@ else CHZ.log.push('clothing '+key+' ('+slot+') rigid-fit placed: size '+gs.x.toF
 function applyLook(b,mw,str){try{const [o,a,t,bd]=String(str||'').split('|'),ou=!b.cbody&&o&&STORE.out.find(x=>x.key==o),tint=/^#[0-9a-f]{6}$/i.test(t||'')?t:'';b.tint=tint;
 mw.traverse(x=>{if(!x.isMesh||!x.material)return;const arr=Array.isArray(x.material),nm=(arr?x.material:[x.material]).map(m0=>{const m=m0.clone();if(ou&&m.map){m.map=lookTex(ou.url,m.map,x,isTopCloth(ou.key,STORE.cfg['o:'+ou.key]));if(m.emissiveMap)m.emissiveMap=m.map}if(tint)m.color=new T.Color(tint);m.needsUpdate=true;return m});x.material=arr?nm:nm[0]});
 /* accessories: up to 4 at once, keys separated by commas (shirt + pants + hat ...) */
-const rfC=(p,k)=>{const v=REFIT[p+k];return v&&v!='auto'?Object.assign({},STORE.cfg[p+k]||{},{ori:v}):STORE.cfg[p+k]||{}};/* refit pref rides in cfg: reaches staticCand as cfg.ori AND gets its own cache key */
+const rfC=(p,k)=>{const v=REFIT[p+k],c=STORE.cfg[p+k]||{};/* refit pref rides in cfg: garment picks as cfg.ori (fit orientation, own cache key), hat/glasses picks as cfg.lift (vertical nudge) */
+if(v&&v!='auto')return typeof v=='string'&&v.slice(0,2)=='L:'?Object.assign({},c,{lift:parseFloat(v.slice(2))||0}):Object.assign({},c,{ori:v});return c};
 String(a||'').split(',').filter(Boolean).slice(0,4).forEach(k=>{const ac=STORE.acc.find(x=>x.key==k);if(ac)loadAcc(ac).then(r=>{if(r&&b.mw&&mw.parent)attachAcc(b,mw,r,rfC('a:',k),k)})});
 String(bd||'').split(',').filter(Boolean).slice(0,6).forEach(k=>{const gb=STORE.bod.find(x=>x.key==k);if(gb&&isGarmentBody(gb))loadAcc(gb).then(r=>{if(r&&b.mw&&mw.parent)attachAcc(b,mw,r,rfC('b:',gb.key),'b:'+gb.key)})})}catch(e){console.warn('[char] look',e)}}
 /* Character preview: its own little renderer, drag to rotate */
@@ -1493,7 +1522,7 @@ spin.rotation.y=CHV.ry;try{r.render(sc,c)}catch(e){if(!CHV.rerr){CHV.rerr=1;cons
    with no gun the pose code simply lets both arms hang relaxed.) */
 function chNoGun(b){try{const gh=b.gun;if(gh&&gh.parent)gh.parent.remove(gh);b.gun=null;b.gg=null;[...b.g.children].forEach(c=>{if(c!==b.mw&&c.isGroup&&c.scale.x>1.09&&c.scale.x<1.11)b.g.remove(c)})}catch(e){console.warn('[char] no gun',e)}}
 /* small readout under the preview: which build is running + the model's materials (so a wrong look can be diagnosed from a screenshot) */
-function chDiagText(){try{const b=CHV.b,seen=new Set(),rows=[];if(b&&b.mw)b.mw.traverse(x=>{if(!x.isMesh||!x.material)return;[].concat(x.material).forEach(m=>{if(seen.has(m))return;seen.add(m);rows.push((m.name||'?').slice(0,16)+' '+String(m.type).replace('Material','')+' map:'+(m.map?'yes':'no')+' colour:#'+(m.color?m.color.getHexString():'-')+' emissive:'+(m.emissiveIntensity!==undefined?(+m.emissiveIntensity).toFixed(2):'-')+' metal:'+(m.metalness!==undefined?(+m.metalness).toFixed(1):'-')+(m.transparent?' transparent:'+(+m.opacity).toFixed(1):'')+(m.userData&&m.userData.skinFix?'  <- skin colour fix applied':'')+(m.userData&&m.userData.swapped?'  <- red/blue swapped':''))})});return 'character preview build 20 - worn on default mannequin\nlook: '+lkStr()+'\n'+(rows.length?rows.join('\n'):'(no model loaded)')+(CHZ.log.length?'\n'+CHZ.log.slice(-10).join('\n'):'')}catch(e){return 'diag error: '+e.message}}
+function chDiagText(){try{const b=CHV.b,seen=new Set(),rows=[];if(b&&b.mw)b.mw.traverse(x=>{if(!x.isMesh||!x.material)return;[].concat(x.material).forEach(m=>{if(seen.has(m))return;seen.add(m);rows.push((m.name||'?').slice(0,16)+' '+String(m.type).replace('Material','')+' map:'+(m.map?'yes':'no')+' colour:#'+(m.color?m.color.getHexString():'-')+' emissive:'+(m.emissiveIntensity!==undefined?(+m.emissiveIntensity).toFixed(2):'-')+' metal:'+(m.metalness!==undefined?(+m.metalness).toFixed(1):'-')+(m.transparent?' transparent:'+(+m.opacity).toFixed(1):'')+(m.userData&&m.userData.skinFix?'  <- skin colour fix applied':'')+(m.userData&&m.userData.swapped?'  <- red/blue swapped':''))})});return 'character preview build 21 - worn on default mannequin\nlook: '+lkStr()+'\n'+(rows.length?rows.join('\n'):'(no model loaded)')+(CHZ.log.length?'\n'+CHZ.log.slice(-10).join('\n'):'')}catch(e){return 'diag error: '+e.message}}
 function chDiag(){const d=hh('div','cx-diag');d.textContent=chDiagText();return d}
 /* garments load asynchronously, so the panel re-reads the log shortly after anything is written to it */
 let CDT=0;function chDiagSoon(){if(CDT)return;CDT=setTimeout(()=>{CDT=0;try{const d=document.querySelector('.cx-diag');if(d)d.textContent=chDiagText()}catch(e){}},150)}
@@ -1527,7 +1556,11 @@ if(!c){side.append(hh('p','','Log in to customise your character.'));wrap.append
 const lk=lkGet(),pick=(k,v)=>{lk[k]=v;chBuild();chRender();lkSave()};
 /* REFIT badge: on every WORN clothing tile - cycles the fit orientation for that one item and
    remembers it. Answers "this new asset sits wrong" without any files being sent anywhere. */
-const RF_CYC=['auto'].concat(ORIS.map(o=>o.name)),refitBadge=(k)=>{const b2=hh('b','cxrf','\u21bb');b2.title='Fit looks wrong? Tap to try the next fitting orientation for this item (your pick is saved)';b2.onclick=e=>{e.stopPropagation();const i=Math.max(0,RF_CYC.indexOf(REFIT[k]||'auto')),nx=RF_CYC[(i+1)%RF_CYC.length];if(nx=='auto')delete REFIT[k];else REFIT[k]=nx;refitSave();CH.msg=(nx=='auto'?'Fit reset to auto':'Fit orientation: '+nx)+' - tap the arrow again until the item sits right';chBuild();chRender()};return b2};
+const RF_CYC=['auto'].concat(ORIS.map(o=>o.name)),RF_LFT=[['auto','auto'],['-0.05','down 5cm'],['-0.02','down 2cm'],['0.02','up 2cm'],['0.05','up 5cm']],
+refitBadge=(k,mode)=>{const b2=hh('b','cxrf','\u21bb');b2.title=mode=='lift'?'Sits too high or too low? Tap to nudge this item up/down - your pick is saved':'Fit looks wrong? Tap to try the next fitting orientation for this item (your pick is saved)';
+b2.onclick=e=>{e.stopPropagation();
+if(mode=='lift'){const cur=(REFIT[k]||'auto').replace('L:',''),i=Math.max(0,RF_LFT.map(x=>x[0]).indexOf(cur)),nx=RF_LFT[(i+1)%RF_LFT.length];if(nx[0]=='auto')delete REFIT[k];else REFIT[k]='L:'+nx[0];refitSave();CH.msg=nx[0]=='auto'?'Nudge reset to auto':'Nudge: '+nx[1]+' - tap again for the next step';chBuild();chRender();return}
+const i=Math.max(0,RF_CYC.indexOf(REFIT[k]||'auto')),nx=RF_CYC[(i+1)%RF_CYC.length];if(nx=='auto')delete REFIT[k];else REFIT[k]=nx;refitSave();CH.msg=(nx=='auto'?'Fit reset to auto':'Fit orientation: '+nx)+' - tap the arrow again until the item sits right';chBuild();chRender()};return b2};
 const grid=(items,cur,key,glyph)=>{const g=hh('div','cxg');items.forEach(([val,name,img])=>{const d=hh('div','cxi'+(cur==val?' on':''),'<i>'+(img?'':glyph)+'</i><span></span>');d.querySelector('span').textContent=name;if(img)d.firstChild.style.backgroundImage='url("'+img+'")';d.onclick=()=>pick(key,val);if(key=='outfit')otTile(d,val);g.append(d)});return g};
 const outs=[['','Default',''],...STORE.out.filter(x=>owns('o:'+x.key)).map(x=>[x.key,x.name,''])],accs=[['','None',''],...STORE.acc.filter(x=>owns('a:'+x.key)).map(x=>[x.key,x.name,''])];
 const bods=[['','Default',''],...STORE.bod.filter(x=>owns('b:'+x.key)).map(x=>[x.key,x.name,''])],cust=!!bodyFor(lkStr());
@@ -1540,7 +1573,7 @@ side.append(hh('h3','','Body skin & clothing'),hh('p','','Tap to put on or take 
 if(cust)side.append(hh('h3','','Outfit'),hh('p','','Outfits are painted for the default body. Set Body skin back to Default to use one.'));else side.append(hh('h3','','Outfit'),grid(outs,lk.outfit,'outfit','👤'));
 const accSel=String(lk.acc||'').split(',').filter(Boolean),ag=hh('div','cxg');
 accs.forEach(([val,name])=>{const d=hh('div','cxi'+((val?accSel.includes(val):!accSel.length)?' on':''),'<i>'+(val?'🎩':'')+'</i><span></span>');d.querySelector('span').textContent=name;
-if(val&&accSel.includes(val)&&/^(torso|legs|feet)$/.test(accSlot(val,{})))d.append(refitBadge(val));
+if(val&&accSel.includes(val)){const sl2=accSlot(val,{});if(/^(torso|legs|feet)$/.test(sl2))d.append(refitBadge(val));else if(/^(hat|glasses|mask|ears)$/.test(sl2))d.append(refitBadge(val,'lift'))}
 d.onclick=()=>{let n=[];if(val){n=accSel.includes(val)?accSel.filter(x=>x!=val):[...accSel.filter(q=>!sameSlot('a',q,'a',val)),val];if(n.length>4)n=n.slice(-4);if(!accSel.includes(val))lk.body=String(lk.body||'').split(',').filter(Boolean).filter(q=>!sameSlot('b',q,'a',val)).join(',')}pick('acc',n.join(','))};ag.append(d)});
 side.append(hh('h3','','Accessories'),hh('p','','Tap to put on or take off. You can wear up to 4 at once, e.g. a shirt, pants and a hat.'),ag);
 if(outs.length<2&&accs.length<2&&bods.length<2)side.append(hh('p','','You don\'t own any outfits, accessories or body skins yet. Earn credits by playing, then pick some up in the Store.'));
