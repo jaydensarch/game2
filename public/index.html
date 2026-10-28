@@ -878,6 +878,15 @@ function robustBox(obj,lo,hi){lo=lo==null?3:lo;hi=hi==null?97:hi;obj.updateMatri
 obj.traverse(x=>{if(!x.isMesh||!x.geometry||!x.geometry.attributes.position)return;const pa=x.geometry.attributes.position,st=Math.max(1,Math.floor(pa.count/2500));for(let i=0;i<pa.count;i+=st){v.fromBufferAttribute(pa,i).applyMatrix4(x.matrixWorld);pts.push(v.x,v.y,v.z)}});
 if(!pts.length)return null;const m=pts.length/3,ax=a=>{const s=pts.filter((_,i)=>i%3===a).sort((p,q)=>p-q);return[s[Math.min(s.length-1,Math.floor(s.length*lo/100))],s[Math.min(s.length-1,Math.floor(s.length*hi/100))]]};
 const [x0,x1]=ax(0),[y0,y1]=ax(1),[z0,z1]=ax(2);return new T.Box3(new T.Vector3(x0,y0,z0),new T.Vector3(x1,y1,z1))}
+/* RIM BAND: the y of the densest horizontal band in the lower half of a prop's vertex cloud.
+   A helmet's opening rim is a dense RING of vertices at one height; the thin strays that hang
+   below it (chin straps, boom arms, dangling mounts) are SPARSE - so the peak bin finds the rim
+   where a percentile bottom gets dragged down by the strap (which then lifts the whole helmet
+   off the head, since the anchor places that 'bottom' at the crown). Returns the band's LOWER
+   edge, or null when the cloud is too sparse/uniform to have a clear peak. */
+function rimBand(obj){try{obj.updateMatrixWorld(true);const ys=[],v=new T.Vector3();obj.traverse(x=>{if(!x.isMesh||!x.geometry||!x.geometry.attributes.position)return;const pa=x.geometry.attributes.position,st=Math.max(1,Math.floor(pa.count/2000));for(let i=0;i<pa.count;i+=st){v.fromBufferAttribute(pa,i).applyMatrix4(x.matrixWorld);ys.push(v.y)}});if(ys.length<24)return null;ys.sort((a,b)=>a-b);
+const lo=ys[Math.floor(ys.length*.08)],hi=ys[Math.floor(ys.length*.55)],B=18,h=(hi-lo)/B;if(!(h>1e-9))return null;const cnt=new Array(B).fill(0);for(let i=0;i<ys.length;i++){const y=ys[i];if(y<lo||y>hi)continue;const b2=Math.min(B-1,Math.floor((y-lo)/h));cnt[b2]++}
+let bi=0;for(let i=1;i<B;i++)if(cnt[i]>cnt[bi])bi=i;if(!cnt[bi])return null;return lo+bi*h}catch(e){return null}}
 function fitMeasure(b,mw){if(b.fit)return b.fit;
 const bones=[];mw.traverse(x=>{if(x.isBone)bones.push(x)});const nk=x=>x.name.toLowerCase().replace(/[^a-z]/g,'');
 const head=bones.find(x=>/head$/.test(nk(x))),top=bones.find(x=>/headtop/.test(nk(x))),neck=bones.find(x=>/neck$/.test(nk(x))),spine=bones.filter(x=>/spine/.test(nk(x))),spineTop=spine.length?spine.reduce((p,c)=>nk(c)>nk(p)?c:p):null;
@@ -1443,12 +1452,13 @@ else{/* hat / helmet, sized and anchored on ROBUST (percentile) boxes: a helmet 
    (a bowl is a bit deeper than the head; side bits like ear cups are allowed to overhang), caps by width as before. Anchor: the robust BOTTOM (the rim, where the
    vertex mass is) sits at the crown minus a sink, so a deep bowl wraps the crown and a shallow cap still just sits on top. */
 const isHelm=/helm|hardhat|hard ?hat/i.test(key),rb=robustBox(wrap,3,97),rbA=robustBox(wrap,12,90);
-const rsz=rb?rb.getSize(new T.Vector3()):sz.clone(),rct=rb?rb.getCenter(new T.Vector3()):ct.clone(),rlo=rbA?rbA.min.y:ct.y-sz.y/2;
+const rsz=rb?rb.getSize(new T.Vector3()):sz.clone(),rct=rb?rb.getCenter(new T.Vector3()):ct.clone(),rlo=rimBand(wrap)!==null?rimBand(wrap):(rbA?rbA.min.y:ct.y-sz.y/2);/* rim = densest band, not the percentile bottom: a chin strap below the rim used to drag the anchor down and LIFT the whole helmet off the head */
 if(!(rsz.x>1e-6&&rsz.y>1e-6&&rsz.z>1e-6)){rsz.copy(sz);rct.copy(ct)}
 f=isHelm?mn(hs.z*1.3*S/rsz.z,hs.x*1.9*S/rsz.x,hs.y*2.4*S/rsz.y):mn(hs.x*1.14*S/rsz.x,hs.y*1.6*S/rsz.y,hs.z*1.4*S/rsz.z);
 const sink=isHelm?Math.min(hs.y*.30,rsz.y*f*.5):hs.y*.1;
 cx=hc.x-(rct.x-ct.x)*f;cz=hc.z-(rct.z-ct.z)*f;cy=hb.max.y-sink-(rlo-ct.y)*f}
-cy+=lift;cz+=fwd;if(!parent)parent=mw;
+cy+=lift;cz+=fwd;/* head gear rides the HEAD BONE (not the mannequin root): a helmet/glasses/mask parented to the root stays behind when the idle animation turns the head - that is the "helmet floats / clips into the head" bug */
+if(!parent)parent=(slot=='hat'||slot=='glasses'||slot=='mask'||slot=='ears')?(F.head||mw):mw;
 const hold=new T.Group();wrap.position.set(-ct.x,-ct.y,-ct.z);hold.add(wrap);
 const pq=new T.Quaternion(),ps=new T.Vector3(),gq=new T.Quaternion(),wp=b.g.localToWorld(new T.Vector3(cx,cy,cz));
 b.g.updateMatrixWorld(true);parent.updateWorldMatrix(true,false);parent.getWorldQuaternion(pq);parent.getWorldScale(ps);b.g.getWorldQuaternion(gq);
@@ -1483,7 +1493,7 @@ spin.rotation.y=CHV.ry;try{r.render(sc,c)}catch(e){if(!CHV.rerr){CHV.rerr=1;cons
    with no gun the pose code simply lets both arms hang relaxed.) */
 function chNoGun(b){try{const gh=b.gun;if(gh&&gh.parent)gh.parent.remove(gh);b.gun=null;b.gg=null;[...b.g.children].forEach(c=>{if(c!==b.mw&&c.isGroup&&c.scale.x>1.09&&c.scale.x<1.11)b.g.remove(c)})}catch(e){console.warn('[char] no gun',e)}}
 /* small readout under the preview: which build is running + the model's materials (so a wrong look can be diagnosed from a screenshot) */
-function chDiagText(){try{const b=CHV.b,seen=new Set(),rows=[];if(b&&b.mw)b.mw.traverse(x=>{if(!x.isMesh||!x.material)return;[].concat(x.material).forEach(m=>{if(seen.has(m))return;seen.add(m);rows.push((m.name||'?').slice(0,16)+' '+String(m.type).replace('Material','')+' map:'+(m.map?'yes':'no')+' colour:#'+(m.color?m.color.getHexString():'-')+' emissive:'+(m.emissiveIntensity!==undefined?(+m.emissiveIntensity).toFixed(2):'-')+' metal:'+(m.metalness!==undefined?(+m.metalness).toFixed(1):'-')+(m.transparent?' transparent:'+(+m.opacity).toFixed(1):'')+(m.userData&&m.userData.skinFix?'  <- skin colour fix applied':'')+(m.userData&&m.userData.swapped?'  <- red/blue swapped':''))})});return 'character preview build 19 - worn on default mannequin\nlook: '+lkStr()+'\n'+(rows.length?rows.join('\n'):'(no model loaded)')+(CHZ.log.length?'\n'+CHZ.log.slice(-10).join('\n'):'')}catch(e){return 'diag error: '+e.message}}
+function chDiagText(){try{const b=CHV.b,seen=new Set(),rows=[];if(b&&b.mw)b.mw.traverse(x=>{if(!x.isMesh||!x.material)return;[].concat(x.material).forEach(m=>{if(seen.has(m))return;seen.add(m);rows.push((m.name||'?').slice(0,16)+' '+String(m.type).replace('Material','')+' map:'+(m.map?'yes':'no')+' colour:#'+(m.color?m.color.getHexString():'-')+' emissive:'+(m.emissiveIntensity!==undefined?(+m.emissiveIntensity).toFixed(2):'-')+' metal:'+(m.metalness!==undefined?(+m.metalness).toFixed(1):'-')+(m.transparent?' transparent:'+(+m.opacity).toFixed(1):'')+(m.userData&&m.userData.skinFix?'  <- skin colour fix applied':'')+(m.userData&&m.userData.swapped?'  <- red/blue swapped':''))})});return 'character preview build 20 - worn on default mannequin\nlook: '+lkStr()+'\n'+(rows.length?rows.join('\n'):'(no model loaded)')+(CHZ.log.length?'\n'+CHZ.log.slice(-10).join('\n'):'')}catch(e){return 'diag error: '+e.message}}
 function chDiag(){const d=hh('div','cx-diag');d.textContent=chDiagText();return d}
 /* garments load asynchronously, so the panel re-reads the log shortly after anything is written to it */
 let CDT=0;function chDiagSoon(){if(CDT)return;CDT=setTimeout(()=>{CDT=0;try{const d=document.querySelector('.cx-diag');if(d)d.textContent=chDiagText()}catch(e){}},150)}
